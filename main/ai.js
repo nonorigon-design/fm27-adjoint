@@ -83,15 +83,19 @@ async function ollamaFetch(path, { body, signal, fetchImpl = fetch, method } = {
 
 async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens }) {
   if (!/^[A-Za-z0-9_.:\-\/]+$/.test(model || '')) throw new AiError('model_missing', 'Choisis un modèle local.');
-  const res = await ollamaFetch('/api/chat', {
-    signal, fetchImpl,
-    body: {
-      model, stream: false,
-      keep_alive: '2m', // libère la mémoire peu après l'analyse pour ne pas pénaliser FM
-      options: { num_ctx: 8192, temperature: 0.3, ...(maxTokens ? { num_predict: maxTokens } : {}) },
-      messages: [{ role: 'user', content: prompt, images }],
-    },
-  });
+  const body = {
+    model, stream: false,
+    keep_alive: '2m', // libère la mémoire peu après l'analyse pour ne pas pénaliser FM
+    options: { num_ctx: 8192, temperature: 0.3, ...(maxTokens ? { num_predict: maxTokens } : {}) },
+    messages: [{ role: 'user', content: prompt, images }],
+  };
+  // think:false — sinon les modèles « réflexion » (qwen3-vl) dépensent tout leur budget en raisonnement caché et renvoient un texte vide.
+  let res;
+  try { res = await ollamaFetch('/api/chat', { signal, fetchImpl, body: { ...body, think: false } }); }
+  catch (e) {
+    if (!(e.kind === 'server' && /HTTP 400|think/i.test(e.message))) throw e; // ancienne version d'Ollama ou modèle sans option « think »
+    res = await ollamaFetch('/api/chat', { signal, fetchImpl, body });
+  }
   const data = await res.json();
   const text = String(data?.message?.content || '').trim();
   if (!text) throw new AiError('empty', 'Le modèle local n’a renvoyé aucun texte. Essaie un autre modèle avec vision.');

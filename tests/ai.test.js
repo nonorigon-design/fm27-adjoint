@@ -93,3 +93,17 @@ test('mise à jour : états, hors-ligne silencieux, installation seulement si pr
   assert.match(friendly(new Error('sha512 checksum mismatch')), /rejeté/);
   assert.equal((await new UpdateManager({ autoUpdater: null, currentVersion: '2.0.0', packaged: false }).check()).state, 'dev');
 });
+
+test('Ollama : envoie think:false et réessaie sans si le modèle le refuse', async () => {
+  const bodies = [];
+  const fetchImpl = async (url, opts) => {
+    const b = JSON.parse(opts.body); bodies.push(b);
+    if ('think' in b) return { ok: false, status: 400, text: async () => '"model" does not support think' };
+    return { ok: true, status: 200, json: async () => ({ message: { content: 'OK' } }) };
+  };
+  const { analyze } = require('../main/ai');
+  const r = await analyze({ provider: 'ollama', model: 'qwen3-vl:4b', mode: 'discussion', question: 'x', images: [], fetchImpl });
+  assert.ok(String(r.text ?? r).includes('OK'));
+  assert.equal(bodies[0].think, false);
+  assert.equal('think' in bodies[1], false);
+});

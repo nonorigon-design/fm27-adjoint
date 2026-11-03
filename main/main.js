@@ -208,7 +208,7 @@ function registerIpc() {
     setupAbort = new AbortController();
     try {
       const r = await setupLocalEngine({ ollama, hardware, signal: setupAbort.signal, tmpDir: app.getPath('temp'), onStep: (st) => send('engine:step', st),
-        selfTest: (tag) => analyze({ provider: 'ollama', model: tag, mode: 'discussion', question: 'Réponds uniquement par le mot OK.', images: [makeSelfTestImage()], maxTokens: 30 }) });
+        selfTest: (tag) => analyze({ provider: 'ollama', model: tag, mode: 'discussion', question: 'Réponds uniquement par le mot OK.', images: [makeSelfTestImage()], maxTokens: 300 }) });
       settings = { ...settings, provider: 'ollama', ollamaModel: r.model, setupDone: true }; saveSettings();
       return { ...r, settings };
     } finally { setupAbort = null; }
