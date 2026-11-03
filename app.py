@@ -26,7 +26,12 @@ class App(tk.Tk):
         self.images = []
         self.db = core.History(DATA / 'historique.sqlite')
         self.provider = tk.StringVar(value='Gemini en ligne')
-        self.key = tk.StringVar()
+        self.key_file = DATA / 'gemini.dpapi'
+        try:
+            remembered_key = core.load_key(self.key_file)
+        except Exception:
+            remembered_key = ''
+        self.key = tk.StringVar(value=remembered_key)
         self.model = tk.StringVar()
         self.career = tk.StringVar(value='Ma carrière')
         self.mode = tk.StringVar(value='Diagnostic tactique')
@@ -48,7 +53,8 @@ class App(tk.Tk):
         ttk.Button(config, text='Charger les modèles', command=self.load_models).pack(side='left', padx=6)
         self.model_box = ttk.Combobox(config, textvariable=self.model, width=29)
         self.model_box.pack(side='left', fill='x', expand=True)
-        ttk.Label(root, text='Clé gardée en mémoire uniquement. Gemini : captures envoyées à Google après clic sur Analyser.\nLa liste des modèles ne garantit pas leur gratuité : utilise un projet sans facturation. Ollama reste local.').pack(anchor='w', pady=8)
+        ttk.Label(root, text='Clé mémorisée après validation et protégée par ton compte Windows. Gemini : captures envoyées à Google après clic sur Analyser.\nLa liste des modèles ne garantit pas leur gratuité : utilise un projet sans facturation. Ollama reste local.').pack(anchor='w', pady=8)
+        ttk.Button(root, text='Oublier la clé enregistrée', command=self.forget_key).pack(anchor='w')
         row = ttk.Frame(root)
         row.pack(fill='x')
         ttk.Label(row, text='Carrière : ').pack(side='left')
@@ -78,6 +84,8 @@ class App(tk.Tk):
         ttk.Label(root, textvariable=self.status, wraplength=1080).pack(anchor='w', pady=(8, 0))
         self.refresh()
         self.after(100, self.poll)
+        if remembered_key:
+            self.after(400, self.load_models)
 
     def run_job(self, fn, done):
         if self.busy:
@@ -111,11 +119,23 @@ class App(tk.Tk):
             pass
         self.after(100, self.poll)
 
+    def forget_key(self):
+        self.key_file.unlink(missing_ok=True)
+        self.key.set('')
+        self.model.set('')
+        self.status.set('Clé effacée de cet ordinateur.')
+
     def load_models(self):
-        provider, key = self.provider.get(), self.key.get().strip()
+        provider, key = self.provider.get(), core.normalize_key(self.key.get())
         def done(names):
             self.model_box['values'] = names
             if names:
+                if provider == 'Gemini en ligne':
+                    try:
+                        core.save_key(self.key_file, key)
+                        self.key.set(key)
+                    except Exception as error:
+                        messagebox.showwarning('Mémorisation', 'La connexion fonctionne, mais la clé n’a pas pu être mémorisée. ' + str(error))
                 self.model.set(next((n for n in names if 'flash' in n and not any(t in n for t in ['preview', 'image', 'audio', 'live'])), names[0]))
             else:
                 messagebox.showinfo('Modèles', 'Aucun modèle trouvé. Pour Ollama, télécharge un modèle visuel comme qwen3-vl:4b.')
