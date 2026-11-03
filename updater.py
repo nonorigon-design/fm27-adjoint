@@ -49,7 +49,8 @@ def install(manifest, root):
 
 
 def refresh(root):
-    request = urllib.request.Request(MANIFEST_URL, headers={'User-Agent': 'FM27-Adjoint-Updater', 'Cache-Control': 'no-cache'})
+    import time
+    request = urllib.request.Request(MANIFEST_URL + '?t=' + str(int(time.time())), headers={'User-Agent': 'FM27-Adjoint-Updater', 'Cache-Control': 'no-cache'})
     with urllib.request.urlopen(request, timeout=12) as response:
         raw = response.read(MAX_MANIFEST + 1)
     if len(raw) > MAX_MANIFEST:
