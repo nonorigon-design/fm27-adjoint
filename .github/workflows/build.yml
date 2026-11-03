@@ -93,15 +93,32 @@ jobs:
             ${{ env.SMOKE_DIR }}/ui.png
 
       # La version n'est publiée QUE si tout ce qui précède a réussi : une version défectueuse n'atteint jamais les utilisateurs.
+      # Sur une étiquette, la release est créée si besoin. Sur main, on complète seulement une release déjà créée
+      # pour la version du paquet qui n'a pas encore son installateur (idempotent : jamais de double publication).
       - name: Publier la version
-        if: startsWith(github.ref, 'refs/tags/v')
+        id: publish
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         run: |
-          gh release create $env:GITHUB_REF_NAME "dist/FM27-Adjoint-Setup-$env:VERSION.exe" "dist/FM27-Adjoint-Setup-$env:VERSION.exe.blockmap" dist/latest.yml dist/SHA256.txt `
-            --title "FM27 Adjoint $env:VERSION" --notes "Installateur Windows. Les installations existantes se mettent à jour automatiquement au démarrage." --verify-tag
+          $ErrorActionPreference = 'Continue'
+          $tag = "v$env:VERSION"
+          $files = @("dist/FM27-Adjoint-Setup-$env:VERSION.exe", "dist/FM27-Adjoint-Setup-$env:VERSION.exe.blockmap", 'dist/latest.yml', 'dist/SHA256.txt')
+          $isTag = $env:GITHUB_REF -like 'refs/tags/*'
+          gh release view $tag 2>$null | Out-Null
+          $exists = ($LASTEXITCODE -eq 0)
+          if ($exists) {
+            $names = gh release view $tag --json assets --jq '.assets[].name'
+            if ($names -contains "FM27-Adjoint-Setup-$env:VERSION.exe") { Write-Host "Release $tag deja complete."; "PUBLISHED=false" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV; exit 0 }
+            gh release upload $tag @files --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Ajout des fichiers a la release impossible' }
+            gh release edit $tag --title "FM27 Adjoint $env:VERSION" --latest --draft=false --prerelease=false
+          } elseif ($isTag) {
+            gh release create $tag @files --title "FM27 Adjoint $env:VERSION" --notes "Installateur Windows. Les installations existantes se mettent a jour automatiquement au demarrage." --verify-tag
+            if ($LASTEXITCODE -ne 0) { throw 'Creation de la release impossible' }
+          } else { Write-Host "Pas de release $tag : rien a publier depuis main."; "PUBLISHED=false" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV; exit 0 }
+          "PUBLISHED=true" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       - name: Pont de migration pour les anciennes versions Python
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.PUBLISHED == 'true'
         run: |
           git config user.name 'github-actions'; git config user.email 'actions@users.noreply.github.com'
           git fetch origin main; git checkout -B main origin/main
