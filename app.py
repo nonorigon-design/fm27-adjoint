@@ -234,7 +234,34 @@ class App(tk.Tk):
             self.status.set('Rapport exporté.')
 
 
+def detach_from_terminal():
+    """Reopen through pythonw so closing the launch console cannot kill the GUI."""
+    import subprocess
+    import sys
+    if os.name != 'nt' or os.path.basename(sys.executable).lower() != 'python.exe':
+        return False
+    pythonw = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
+    if not os.path.isfile(pythonw):
+        return False
+    subprocess.Popen(
+        [pythonw, os.path.abspath(__file__)],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        creationflags=0x00000008 | 0x00000200,  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        close_fds=True,
+    )
+    return True
+
+
 if __name__ == '__main__':
+    import sys
+    if detach_from_terminal():
+        sys.exit(0)
+    if os.name == 'nt':
+        DATA.mkdir(parents=True, exist_ok=True)
+        sys.stderr = open(DATA / 'application.log', 'a', encoding='utf-8', buffering=1)
+        sys.stdout = sys.stderr
+
     if os.name == 'nt':
         import ctypes
         try:
