@@ -21,6 +21,7 @@ Structure: Faits observés / Diagnostic / Corrections / Comment vérifier / Info
 
 
 def request_json(url, payload=None, key=''):
+    key = normalize_key(key)
     headers = {'Content-Type': 'application/json'}
     if key:
         headers['x-goog-api-key'] = key
@@ -29,11 +30,23 @@ def request_json(url, payload=None, key=''):
         with urllib.request.urlopen(req, timeout=120) as response:
             return json.load(response)
     except urllib.error.HTTPError as e:
+        reason = ''
+        try:
+            error = json.loads(e.read(64000)).get('error', {})
+            reasons = [d.get('reason', '') for d in error.get('details', [])]
+            if 'API_KEY_INVALID' in reasons:
+                reason = 'Google refuse cette clé API. Recopie la clé complète depuis AI Studio ; vérifie qu’elle n’a pas été supprimée.'
+            elif any('API_KEY' in r for r in reasons):
+                reason = 'La clé est bloquée par ses restrictions. Vérifie les restrictions API et les restrictions d’application dans ton projet Google.'
+            elif any(r in reasons for r in ['SERVICE_DISABLED', 'BILLING_DISABLED', 'CONSUMER_INVALID']):
+                reason = 'Le projet Google associé à la clé n’a pas accès au service. Vérifie son activation et les conditions d’accès au quota gratuit.'
+        except (ValueError, TypeError, AttributeError, OSError):
+            pass
         messages = {400: 'Requête refusée : vérifie le modèle et sa compatibilité image.',
                     401: 'Clé API invalide.', 403: 'Accès refusé : vérifie la clé et les droits du projet.',
                     404: 'Modèle introuvable : actualise la liste.',
                     429: 'Quota atteint. Attends avant de réessayer ou utilise Ollama. Aucun nouvel essai automatique.'}
-        raise RuntimeError(messages.get(e.code, f'Service indisponible (HTTP {e.code}).')) from None
+        raise RuntimeError(reason or messages.get(e.code, f'Service indisponible (HTTP {e.code}).')) from None
     except (urllib.error.URLError, TimeoutError):
         raise RuntimeError('Connexion impossible ou délai dépassé. Vérifie Internet ou le démarrage d’Ollama.') from None
 
@@ -109,3 +122,58 @@ class History:
 
     def context(self, career):
         return '\n\n'.join(f'{r[1]} : {r[2]}\n{r[3]}' for r in reversed(self.rows(career)[:3]))
+
+
+def normalize_key(value):
+    return ''.join(value.strip().strip('\"\'').split())
+
+
+def protect_key(raw, decrypt=False):
+    import os
+    import ctypes
+    from ctypes import wintypes
+    if os.name != 'nt':
+        raise RuntimeError('La mémorisation sécurisée nécessite Windows.')
+    class Blob(ctypes.Structure):
+        _fields_ = [('size', wintypes.DWORD), ('data', ctypes.POINTER(ctypes.c_ubyte))]
+    buffer = ctypes.create_string_buffer(raw)
+    source = Blob(len(raw), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
+    target = Blob()
+    crypt = ctypes.windll.crypt32
+    kernel = ctypes.windll.kernel32
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel.LocalFree.restype = ctypes.c_void_p
+    if decrypt:
+        func = crypt.CryptUnprotectData
+        func.argtypes = [ctypes.POINTER(Blob), ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+        ok = func(ctypes.byref(source), None, None, None, None, 1, ctypes.byref(target))
+    else:
+        func = crypt.CryptProtectData
+        func.argtypes = [ctypes.POINTER(Blob), wintypes.LPCWSTR, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+        ok = func(ctypes.byref(source), 'FM27 Adjoint Gemini', None, None, None, 1, ctypes.byref(target))
+    if not ok:
+        raise RuntimeError('Windows n’a pas pu protéger ou relire la clé. Réessaie sous le même compte Windows.')
+    try:
+        return ctypes.string_at(target.data, target.size)
+    finally:
+        kernel.LocalFree(ctypes.cast(target.data, ctypes.c_void_p))
+
+
+def save_key(path, key):
+    import os
+    key = normalize_key(key)
+    if not key:
+        raise ValueError('La clé est vide.')
+    encrypted = protect_key(key.encode('utf-8'))
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_suffix('.pending')
+    pending.write_bytes(encrypted)
+    os.replace(pending, path)
+
+
+def load_key(path):
+    path = Path(path)
+    if not path.exists():
+        return ''
+    return protect_key(path.read_bytes(), decrypt=True).decode('utf-8')
