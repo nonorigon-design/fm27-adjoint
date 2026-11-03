@@ -16,7 +16,7 @@ DATA = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'FM27_Adjoint'
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('FM27 Adjoint • Espace du coach')
+        self.title('FM27 Adjoint 1.3.1 • Espace du coach')
         screen_height = self.winfo_screenheight()
         self.geometry(f'1320x{min(940, max(740, screen_height - 80))}')
         self.minsize(1080, min(820, max(700, screen_height - 100)))
@@ -27,7 +27,16 @@ class App(tk.Tk):
         self.images = []
         self.thumbs = []
         self.db = core.History(DATA / 'historique.sqlite')
-        self.provider = tk.StringVar(value='Gemini en ligne')
+        import json
+        try:
+            preferences = json.loads((DATA / 'preferences.json').read_text(encoding='utf-8-sig'))
+        except (OSError, ValueError):
+            preferences = {}
+        preferred_provider = preferences.get('provider', 'Gemini en ligne')
+        if preferred_provider not in ['Gemini en ligne', 'Ollama local']:
+            preferred_provider = 'Gemini en ligne'
+        self.provider = tk.StringVar(value=preferred_provider)
+        self.preferred_model = preferences.get('model', '')
         self.key_file = DATA / 'gemini.dpapi'
         try:
             remembered_key = core.load_key(self.key_file)
@@ -67,7 +76,7 @@ class App(tk.Tk):
         tk.Button(bottom, text='Consulter l’historique  →', command=self.history, relief='flat', bd=0,
                   bg='#101e2b', fg='#c2d4df', activebackground='#243a4b', activeforeground='white',
                   font=('Segoe UI', 9), cursor='hand2', anchor='w').pack(fill='x', pady=(12, 24))
-        tk.Label(bottom, text='VERSION 1.3.0', fg='#6e879b', bg='#101e2b', font=('Segoe UI', 8, 'bold')).pack(anchor='w')
+        tk.Label(bottom, text='VERSION 1.3.1', fg='#6e879b', bg='#101e2b', font=('Segoe UI', 8, 'bold')).pack(anchor='w')
         tk.Label(bottom, text='Ton jeu. Tes décisions.', fg='#6e879b', bg='#101e2b', font=('Segoe UI', 9)).pack(anchor='w', pady=(4, 0))
 
         main = tk.Frame(self, bg='#f2f5f8', padx=25, pady=21)
@@ -160,7 +169,7 @@ class App(tk.Tk):
         self.select_mode('Diagnostic tactique', update_prompt=False)
         self.refresh()
         self.after(100, self.poll)
-        if remembered_key:
+        if remembered_key or preferred_provider == 'Ollama local':
             self.after(400, self.load_models)
         else:
             self.status.set('Commence par Réglages IA pour valider ta clé Gemini ou choisir Ollama.')
@@ -280,7 +289,7 @@ class App(tk.Tk):
                         self.key.set(key)
                     except Exception as error:
                         messagebox.showwarning('Mémorisation', 'La connexion fonctionne, mais la clé n’a pas pu être mémorisée. ' + str(error))
-                self.model.set(next((n for n in names if 'flash' in n and not any(t in n for t in ['preview', 'image', 'audio', 'live'])), names[0]))
+                self.model.set(self.preferred_model if self.preferred_model in names else next((n for n in names if 'flash' in n and not any(t in n for t in ['preview', 'image', 'audio', 'live'])), names[0]))
             else:
                 messagebox.showinfo('Modèles', 'Aucun modèle trouvé. Pour Ollama, télécharge un modèle visuel comme qwen3-vl:4b.')
         self.run_job(lambda: core.models(provider, key), done)
