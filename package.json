@@ -1,0 +1,42 @@
+{
+  "name": "fm27-adjoint",
+  "productName": "FM27 Adjoint",
+  "version": "2.0.0",
+  "description": "Entraîneur adjoint personnel pour Football Manager 27 (captures d'écran + IA, en français).",
+  "main": "main/main.js",
+  "author": "nonorigon-design",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"tests/*.test.js\"",
+    "dist": "electron-builder --win nsis --x64 --publish never"
+  },
+  "build": {
+    "appId": "fr.nonorigon.fm27adjoint",
+    "productName": "FM27 Adjoint",
+    "artifactName": "FM27-Adjoint-Setup-${version}.${ext}",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main/**", "renderer/**", "package.json"],
+    "asar": true,
+    "publish": [{ "provider": "github", "owner": "nonorigon-design", "repo": "fm27-adjoint" }],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "FM27 Adjoint",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  },
+  "devDependencies": {
+    "electron": "44.9.3",
+    "electron-builder": "26.17.0"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
+  }
+}

@@ -1,0 +1,110 @@
+name: Construire et publier
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+
+  windows:
+    needs: tests
+    runs-on: windows-latest
+    defaults: { run: { shell: pwsh } }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+
+      - name: La version du paquet doit correspondre à l'étiquette
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "package.json = $v mais l'étiquette est $env:GITHUB_REF_NAME" }
+
+      - name: Construire l'installateur Windows
+        run: npx electron-builder --win nsis --x64 --publish never
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
+
+      - name: Vérifier les fichiers produits
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          foreach ($f in "FM27-Adjoint-Setup-$v.exe", "FM27-Adjoint-Setup-$v.exe.blockmap", 'latest.yml') {
+            if (-not (Test-Path "dist/$f")) { throw "Fichier manquant : $f" }
+          }
+          $size = (Get-Item "dist/FM27-Adjoint-Setup-$v.exe").Length
+          if ($size -lt 50MB) { throw "Installateur suspect ($size octets)" }
+          Get-Content dist/latest.yml
+          "VERSION=$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Installer comme un utilisateur (silencieux) et vérifier le raccourci
+        run: |
+          $setup = "dist/FM27-Adjoint-Setup-$env:VERSION.exe"
+          $p = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installation : code $($p.ExitCode)" }
+          $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'FM27 Adjoint.lnk'
+          if (-not (Test-Path $lnk)) { throw 'Raccourci du Bureau absent' }
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
+          if (-not (Test-Path $target)) { throw "La cible du raccourci n'existe pas : $target" }
+          "INSTALLED_EXE=$target" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "Raccourci -> $target"
+          if (-not (Test-Path (Join-Path (Split-Path $target) 'resources/app-update.yml'))) { throw 'app-update.yml absent : les mises à jour ne fonctionneraient pas' }
+
+      - name: Test de fumée de l'application INSTALLÉE (sans terminal)
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $env:FM27_SMOKE = '1'; $env:FM27_USERDATA = "$out/data"
+          $env:FM27_SMOKE_JSON = "$out/smoke.json"; $env:FM27_SMOKE_PNG = "$out/ui.png"
+          $p = Start-Process -FilePath $env:INSTALLED_EXE -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw 'Démarrage trop long' }
+          Get-Content "$out/smoke.json"
+          if ($p.ExitCode -ne 0) { throw "Test de fumée en échec (code $($p.ExitCode))" }
+          "SMOKE_DIR=$out" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Empreinte de l'installateur
+        run: (Get-FileHash "dist/FM27-Adjoint-Setup-$env:VERSION.exe" -Algorithm SHA256).Hash | Out-File dist/SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installateur-et-preuves
+          path: |
+            dist/FM27-Adjoint-Setup-*.exe
+            dist/latest.yml
+            dist/*.blockmap
+            dist/SHA256.txt
+            ${{ env.SMOKE_DIR }}/smoke.json
+            ${{ env.SMOKE_DIR }}/ui.png
+
+      # La version n'est publiée QUE si tout ce qui précède a réussi : une version défectueuse n'atteint jamais les utilisateurs.
+      - name: Publier la version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+        run: |
+          gh release create $env:GITHUB_REF_NAME "dist/FM27-Adjoint-Setup-$env:VERSION.exe" "dist/FM27-Adjoint-Setup-$env:VERSION.exe.blockmap" dist/latest.yml dist/SHA256.txt `
+            --title "FM27 Adjoint $env:VERSION" --notes "Installateur Windows. Les installations existantes se mettent à jour automatiquement au démarrage." --verify-tag
+
+      - name: Pont de migration pour les anciennes versions Python
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git config user.name 'github-actions'; git config user.email 'actions@users.noreply.github.com'
+          git fetch origin main; git checkout -B main origin/main
+          python tools/make-legacy-bridge.py $env:VERSION "dist/FM27-Adjoint-Setup-$env:VERSION.exe"
+          git add update.json
+          if (git status --porcelain update.json) { git commit -m "Pont de migration vers FM27 Adjoint $env:VERSION [skip ci]"; git push origin main }

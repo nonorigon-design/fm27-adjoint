@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FM27 Adjoint</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="logo">A<small>/27</small></span><div><b>ADJOINT</b><span>Espace du coach</span></div></div>
+    <nav id="nav" aria-label="Sections"></nav>
+    <div class="side-foot">
+      <label class="lbl" for="career">Ma carrière</label>
+      <input id="career" list="careers" maxlength="80" autocomplete="off">
+      <datalist id="careers"></datalist>
+      <button class="side-link" id="btn-history">Historique et changements testés</button>
+      <button class="side-link" id="btn-settings">Réglages IA et application</button>
+      <div class="ver">Version <span id="ver">—</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <div><h1 id="title"></h1><p id="subtitle"></p></div>
+      <div class="top-right">
+        <button class="pill" id="update-pill" hidden></button>
+        <button class="pill engine" id="engine-pill" title="Ouvrir les réglages IA"></button>
+      </div>
+    </header>
+    <div id="notice" class="banner" hidden></div>
+
+    <div class="grid">
+      <section class="card" id="capture-card">
+        <div class="card-h"><h2>1 · Observer le jeu</h2><span class="count" id="count">0 / 6</span></div>
+        <div class="row">
+          <button class="btn primary" id="cap-fm">Capturer Football Manager</button>
+          <button class="btn" id="cap-import">Importer…</button>
+          <button class="btn ghost" id="cap-clear">Vider</button>
+        </div>
+        <details class="more"><summary>Autre fenêtre ou écran entier</summary>
+          <div class="row">
+            <select id="win-select" aria-label="Fenêtre"></select>
+            <button class="btn small" id="win-refresh" title="Actualiser">↻</button>
+            <button class="btn small" id="cap-win">Capturer</button>
+          </div>
+          <div class="row">
+            <select id="screen-select" aria-label="Écran"></select>
+            <button class="btn small" id="cap-screen">Capturer l’écran</button>
+          </div>
+          <p class="hint">Si Football Manager est en plein écran exclusif, Windows peut renvoyer une image noire : passe le jeu en « plein écran fenêtré » ou capture l’écran entier.</p>
+        </details>
+        <div class="row switches">
+          <label class="switch"><input type="checkbox" id="watch"><span></span> Surveiller les changements d’écran</label>
+          <span class="hint" id="shortcut-hint"></span>
+        </div>
+        <div id="watch-toast" class="watch-toast" hidden>
+          <img id="watch-img" alt="Écran détecté"><div><b>Nouvel écran détecté</b><span>Rien n’a été envoyé.</span></div>
+          <button class="btn small primary" id="watch-add">Ajouter</button><button class="btn small ghost" id="watch-dismiss">Ignorer</button>
+        </div>
+        <div id="thumbs" class="thumbs"></div>
+      </section>
+
+      <section class="card" id="ask-card">
+        <div class="card-h"><h2 id="ask-title">2 · Poser la question</h2></div>
+        <div id="thread" class="thread" hidden></div>
+        <textarea id="question" rows="4" aria-label="Question"></textarea>
+        <div class="row between">
+          <span class="hint" id="privacy"></span>
+          <span class="row">
+            <button class="btn ghost" id="cancel" hidden>Annuler</button>
+            <button class="btn primary big" id="analyze">Analyser maintenant</button>
+          </span>
+        </div>
+        <div class="progress" id="analyze-progress" hidden><span></span><em id="progress-text">Analyse en cours…</em></div>
+      </section>
+
+      <section class="card report" id="report-card">
+        <div class="card-h"><h2>3 · Le regard de l’adjoint</h2>
+          <span class="row"><button class="btn small ghost" id="copy">Copier</button><button class="btn small ghost" id="export">Exporter</button></span>
+        </div>
+        <div id="report" class="report-body"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<aside id="drawer" class="drawer" hidden aria-label="Panneau"><div class="drawer-in"><button class="close" id="drawer-close" aria-label="Fermer">×</button><div id="drawer-body"></div></div></aside>
+<div id="lightbox" class="lightbox" hidden><img alt="Aperçu de la capture"></div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script src="markdown.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
