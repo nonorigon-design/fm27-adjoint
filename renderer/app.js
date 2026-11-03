@@ -2,8 +2,9 @@
 (() => {
   const A = window.adjoint;
   const $ = (id) => document.getElementById(id);
-  const SECTIONS = [['tactique', 'T'], ['joueurs', 'J'], ['avantmatch', 'A'], ['debrief', 'D'], ['recrutement', 'R'], ['discussion', 'C']];
+  const SECTIONS = [['direct', '◉'], ['tactique', 'T'], ['joueurs', 'J'], ['avantmatch', 'A'], ['debrief', 'D'], ['recrutement', 'R'], ['discussion', 'C']];
   const TITLES = {
+    direct: ['Ton adjoint, en direct.', 'Il observe Football Manager et te conseille au fil des écrans, sans que tu ajoutes de captures.'],
     tactique: ['Trouve ton équilibre.', 'Formation, rôles et consignes avec et sans ballon, lus sur tes captures.'],
     joueurs: ['Le bon joueur, le bon rôle.', 'Compare les attributs utiles au poste, pas seulement les étoiles.'],
     avantmatch: ['Prépare le prochain rendez-vous.', 'Effectif, adversaire et ajustements à partir de ce qui est visible.'],
@@ -13,7 +14,7 @@
   };
   const KIND_TITLES = { invalid_key: 'Clé Gemini invalide', forbidden: 'Accès refusé', quota: 'Quota atteint', model_missing: 'Modèle indisponible', model_incompatible: 'Modèle incompatible avec les images', connection: 'Problème de connexion', ollama_down: 'Moteur local injoignable', memory: 'Mémoire insuffisante', empty: 'Réponse vide', server: 'Service indisponible' };
 
-  const state = { info: null, settings: null, section: 'tactique', images: [], busy: false, keyStatus: { has: false, tail: '' }, ollama: null, models: { gemini: [], ollama: [] }, update: null, lastReport: null, drafts: {}, lastWatch: null };
+  const state = { live: { on: false, items: [] }, setupRunning: false, info: null, settings: null, section: 'tactique', images: [], busy: false, keyStatus: { has: false, tail: '' }, ollama: null, models: { gemini: [], ollama: [] }, update: null, lastReport: null, drafts: {}, lastWatch: null };
 
   // ---------- utilitaires ----------
   function el(tag, props = {}, ...kids) {
@@ -49,8 +50,9 @@
     A.settings.set({ section: id });
     $('title').textContent = TITLES[id][0]; $('subtitle').textContent = TITLES[id][1];
     $('question').value = state.drafts[id] ?? ''; $('question').placeholder = state.info.modes[id].placeholder;
-    $('ask-title').textContent = id === 'discussion' ? '2 · Discuter' : '2 · Poser la question';
-    renderNav(); renderThread(); showReportFor(id); updatePrivacy();
+    $('ask-title').textContent = id === 'discussion' ? '2 · Discuter' : (id === 'direct' ? 'Poser une question maintenant' : '2 · Poser la question');
+    $('grid').dataset.section = id;
+    renderNav(); renderThread(); if (id !== 'direct') showReportFor(id); updatePrivacy();
   }
   async function renderThread() {
     const box = $('thread');
@@ -107,9 +109,10 @@
   }
   function updatePrivacy() {
     const n = state.images.length;
+    const what = n ? `${n} capture(s)` : (state.section === 'discussion' ? 'ta question' : 'une capture automatique de Football Manager');
     $('privacy').textContent = state.settings.provider === 'gemini'
-      ? `Ce clic enverra ${n} capture(s), ta question et un court historique à Google (Gemini).`
-      : 'Analyse 100 % locale : rien ne quitte ton ordinateur.';
+      ? `Ce clic enverra ${what}, ta question et un court historique à Google (Gemini).`
+      : (n ? 'Analyse 100 % locale : rien ne quitte ton ordinateur.' : 'Sans capture ajoutée, l’adjoint regarde Football Manager lui-même. Analyse 100 % locale.');
   }
   function renderEngine() {
     const p = $('engine-pill'); p.textContent = providerLabel();
@@ -124,7 +127,8 @@
     $('progress-text').textContent = state.settings.provider === 'ollama' ? 'Analyse locale en cours (peut durer une à plusieurs minutes)…' : 'Analyse en cours…';
     try {
       const r = await call(A.analyze({ mode: state.section, question, imageIds: state.images.map((i) => i.id), career: careerName() }));
-      showReport(r);
+      if (state.section === 'direct') { feedAdd({ id: 'q' + Date.now(), state: 'done', answer: r.answer, question, at: Date.now(), q: true }); $('question').value = ''; state.drafts.direct = ''; }
+      else showReport(r);
       if (state.section === 'discussion') { $('question').value = ''; state.drafts.discussion = ''; renderThread(); }
     } catch (e) { if (e.kind !== 'cancelled') showError(e); else toast('Analyse annulée.'); }
     finally { state.busy = false; $('analyze').disabled = false; $('cancel').hidden = true; $('analyze-progress').hidden = true; }
@@ -166,7 +170,8 @@
     if (!st.installed) {
       put(wrap, el('div', { class: 'panel' }, el('p', { text: 'Ollama exécute l’IA sur ton PC, gratuitement. Il n’est pas encore installé.' }),
         el('div', { class: 'row' },
-          el('button', { class: 'btn primary', text: 'Installer Ollama (winget)', onclick: async (ev) => { ev.target.disabled = true; ev.target.textContent = 'Installation…'; try { await call(A.ollama.install()); toast('Ollama installé.'); } catch (e) { toast(e.message, true); } openSettings(); } }),
+          el('button', { class: 'btn primary', text: 'Installer l’IA gratuite (automatique)', onclick: () => { closeDrawer(); openWizard(); } }),
+          el('button', { class: 'btn', text: 'Installer Ollama (winget)', onclick: async (ev) => { ev.target.disabled = true; ev.target.textContent = 'Installation…'; try { await call(A.ollama.install()); toast('Ollama installé.'); } catch (e) { toast(e.message, true); } openSettings(); } }),
           el('button', { class: 'btn', text: 'Télécharger depuis ollama.com', onclick: () => A.openExternal('https://ollama.com/download') }))));
       return wrap;
     }
@@ -299,16 +304,126 @@
     $('shortcut-hint').textContent = state.settings.shortcut ? 'Raccourci : ' + state.settings.shortcut.replace('Control', 'Ctrl') : '';
     if (state.info.failedPreviousBoot) { $('notice').hidden = false; $('notice').textContent = 'Le dernier démarrage de cette version ne s’est pas terminé correctement. Si le problème persiste, réinstalle la version précédente depuis la page des versions du dépôt GitHub.'; }
     renderThumbs(); renderEngine(); emptyReport();
-    state.section = state.settings.section && state.info.modes[state.settings.section] ? state.settings.section : 'tactique';
+    state.section = state.settings.section && state.info.modes[state.settings.section] ? state.settings.section : 'direct';
     selectSection(state.section);
-    refreshWindows();
+    refreshWindows(); renderLive();
     onUpdate(await call(A.update.state()));
+    maybeOfferSetup();
     // Restaure et valide la clé mémorisée au lancement (simple lecture de la liste des modèles, aucune donnée de jeu).
     if (state.settings.provider === 'gemini') {
       const ks = await call(A.key.status());
       if (ks.has) call(A.gemini.models()).then((r) => { state.models.gemini = r.models; }).catch((e) => { toast(`Clé enregistrée mais ${KIND_TITLES[e.kind] || 'erreur'} : ${e.message}`, true); });
     }
   }
+
+
+  // ---------- coach en direct ----------
+  const fmtTime = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  function feedAdd(item) {
+    const i = state.live.items.findIndex((x) => x.id === item.id);
+    if (i >= 0) state.live.items[i] = { ...state.live.items[i], ...item }; else state.live.items.unshift(item);
+    state.live.items = state.live.items.slice(0, 30);
+    renderFeed();
+  }
+  function renderFeed() {
+    const box = $('feed');
+    if (!state.live.items.length) {
+      box.replaceChildren(el('div', { class: 'empty' }, el('b', { text: 'En attente d’un écran' }), state.live.on ? 'Le coach observe Football Manager. Change d’écran dans le jeu : un conseil apparaîtra ici.' : 'Clique sur « Démarrer le coach en direct », puis joue normalement.'));
+      return;
+    }
+    box.replaceChildren(...state.live.items.map((it, idx) => {
+      const body = it.state === 'analyzing' ? el('div', { class: 'txt', text: 'Le coach lit cet écran…' })
+        : it.state === 'quiet' ? el('div', { class: 'txt', text: 'Rien de particulier à signaler sur cet écran.' })
+        : it.state === 'error' ? el('div', { class: 'txt' }, el('b', { text: (KIND_TITLES[it.error.kind] || 'Erreur') + ' — ' }), it.error.message)
+        : el('div', { class: 'txt', text: it.answer });
+      return el('div', { class: `fitem ${it.state}${it.q ? ' q' : ''}${idx === 0 && it.state === 'done' ? ' fresh' : ''}` },
+        it.thumb ? el('img', { src: it.thumb, alt: '' }) : el('div'),
+        el('div', {}, el('div', { class: 'meta', text: fmtTime(it.at) + (it.q ? ' · ta question : ' + (it.question || '').slice(0, 80) : '') }), body));
+    }));
+  }
+  function renderLive() {
+    const on = state.live.on;
+    $('live-toggle').textContent = on ? 'Arrêter le coach en direct' : 'Démarrer le coach en direct';
+    $('live-toggle').classList.toggle('on', on);
+    const st = $('live-state'); st.textContent = on ? 'En direct' : 'Arrêté'; st.classList.toggle('on', on);
+    const opts = $('live-opts'); opts.replaceChildren();
+    if (state.settings.provider === 'gemini') {
+      const cb = el('input', { type: 'checkbox', id: 'live-cloud' }); cb.checked = !!state.settings.liveCloud;
+      cb.onchange = async () => { state.settings = await call(A.settings.set({ liveCloud: cb.checked })); renderLive(); };
+      opts.append(el('label', { class: 'switch' }, cb, el('span'), 'J’autorise l’envoi de chaque nouvel écran à Google (Gemini)'));
+    }
+    $('live-privacy').textContent = state.settings.provider === 'gemini'
+      ? (state.settings.liveCloud ? 'Chaque nouvel écran est envoyé à Google ; le quota gratuit peut être atteint vite. Le coach s’arrête seul si le quota est dépassé.' : 'Avec Gemini, le direct reste bloqué tant que tu ne l’as pas autorisé ci-dessus. Le moteur local évite tout envoi.')
+      : 'Moteur local : rien ne quitte ton ordinateur. Un nouvel écran est analysé au plus toutes les ~12 secondes.';
+    renderFeed();
+  }
+  async function toggleLive() {
+    try {
+      const wantOn = !state.live.on;
+      if (wantOn) { // vérifie qu'un moteur est prêt avant de démarrer
+        const model = state.settings.provider === 'ollama' ? state.settings.ollamaModel : state.settings.geminiModel;
+        if (!model) { toast('Aucune IA prête : installe l’IA gratuite ou configure Gemini.', true); return state.settings.provider === 'ollama' ? openWizard() : openSettings(); }
+      }
+      state.live.on = await call(A.live.set(wantOn)); renderLive();
+    } catch (e) { toast(e.message, true); }
+  }
+  function onLive(ev) {
+    if (ev.type === 'state') {
+      state.live.on = ev.on; renderLive();
+      if (!ev.on && ev.reason) toast(ev.reason === 'quota' ? 'Coach arrêté : quota Gemini atteint.' : ev.reason === 'errors' ? 'Coach arrêté après plusieurs erreurs : vérifie le moteur IA.' : 'Coach arrêté : ' + ev.reason, true);
+    } else if (ev.type === 'item') feedAdd(ev);
+    else if (ev.type === 'notice') { if (ev.message !== state.lastNotice) { state.lastNotice = ev.message; toast(ev.message, true); } }
+  }
+
+  // ---------- installation automatique de l'IA gratuite ----------
+  const WIZ_STEPS = [['hardware', 'Analyse de ton PC'], ['install', 'Installation du moteur Ollama'], ['start', 'Démarrage du moteur'], ['model', 'Téléchargement du modèle de vision'], ['test', 'Vérification sur une image']];
+  async function openWizard(auto) {
+    let hw = null; try { hw = await call(A.hardware()); } catch { /* affiché plus bas */ }
+    const body = $('wizard-body'); $('wizard').hidden = false;
+    const steps = el('ul', { class: 'wiz-steps' }, ...WIZ_STEPS.map(([id, label]) => el('li', { 'data-step': id }, el('i', { text: '·' }), label)));
+    const bar = el('div', { class: 'bar', hidden: true }, el('i')), txt = el('div', { class: 'hint' });
+    const go = el('button', { class: 'btn primary big', text: 'Installer l’IA gratuite' });
+    const later = el('button', { class: 'btn ghost', text: auto ? 'Plus tard' : 'Fermer', onclick: () => { $('wizard').hidden = true; } });
+    const gem = el('button', { class: 'btn', text: 'Utiliser Gemini à la place', onclick: async () => { $('wizard').hidden = true; state.settings = await call(A.settings.set({ provider: 'gemini' })); renderEngine(); openSettings(); } });
+    const cancel = el('button', { class: 'btn ghost', text: 'Interrompre', hidden: true, onclick: () => A.engine.cancel() });
+    const size = hw?.model ? `≈ ${hw.model.sizeGb} Go` : 'plusieurs Go';
+    body.replaceChildren(
+      el('h2', { id: 'wiz-title', text: 'Ton adjoint IA gratuit, installé en un clic' }),
+      el('p', { text: `L’IA tourne sur ton PC : gratuite, sans clé, sans quota, et rien n’est envoyé en ligne. Elle sera lancée automatiquement avec l’adjoint.` }),
+      el('p', { class: 'hint', text: hw ? `${hw.ramGb} Go de RAM${hw.vramGb ? ' · ' + hw.vramGb + ' Go de mémoire vidéo' : ''}. ${hw.reason}` : 'Détection du matériel impossible.' }),
+      el('p', { class: 'hint', text: `Téléchargements : le moteur Ollama (installateur de plusieurs centaines de Mo) puis le modèle ${hw?.model ? hw.model.tag : ''} (${size}). Prévois quelques minutes ; en cas d’interruption, relancer reprend le téléchargement.` }),
+      steps, bar, txt, el('div', { class: 'wiz-actions' }, cancel, later, gem, go));
+    if (!hw?.model) { go.disabled = true; return; }
+    const mark = (id, mode) => { let seen = false; for (const li of steps.children) { if (li.dataset.step === id) { seen = true; li.className = mode; li.firstChild.textContent = mode === 'done' ? '✓' : '·'; } else if (!seen && mode === 'active') { li.className = 'done'; li.firstChild.textContent = '✓'; } } };
+    go.onclick = async () => {
+      state.setupRunning = true; go.disabled = true; later.disabled = true; gem.disabled = true; cancel.hidden = false;
+      const off = A.engine.onStep((st) => {
+        mark(st.id, st.id === 'done' ? 'done' : 'active');
+        if (st.id === 'done') { for (const li of steps.children) { li.className = 'done'; li.firstChild.textContent = '✓'; } }
+        bar.hidden = st.percent == null && !st.indeterminate; bar.firstChild.style.width = (st.percent ?? 100) + '%'; bar.firstChild.style.opacity = st.indeterminate ? '.4' : '1';
+        txt.textContent = st.label + (st.percent != null && st.total ? ` ${st.percent} % · ${(st.done / 1e9).toFixed(2)} / ${(st.total / 1e9).toFixed(2)} Go` : (st.percent != null ? ` ${st.percent} %` : ''));
+      });
+      try {
+        const r = await call(A.engine.setup());
+        state.settings = r.settings; renderEngine();
+        body.replaceChildren(el('h2', { text: 'Ton adjoint IA est prêt ✓' }), el('p', { text: `Modèle ${r.model} installé et vérifié sur une image. Il démarrera avec l’adjoint.` }),
+          el('div', { class: 'wiz-actions' }, el('button', { class: 'btn', text: 'Fermer', onclick: () => { $('wizard').hidden = true; } }), el('button', { class: 'btn primary big', text: 'Démarrer le coach en direct', onclick: async () => { $('wizard').hidden = true; if (!state.live.on) await toggleLive(); } })));
+      } catch (e) {
+        txt.replaceChildren(el('span', { class: 'bad', text: (KIND_TITLES[e.kind] || 'Erreur') + ' — ' + e.message }));
+        go.disabled = false; go.textContent = 'Réessayer'; later.disabled = false; gem.disabled = false; cancel.hidden = true;
+      } finally { off(); state.setupRunning = false; }
+    };
+  }
+  async function maybeOfferSetup() {
+    if (state.settings.provider !== 'ollama') return;
+    const st = await call(A.ollama.status()).catch(() => null);
+    if (!st) return;
+    const ready = st.installed && st.models.length > 0 && state.settings.ollamaModel;
+    if (ready) { if (!st.running) call(A.ollama.start()).catch(() => {}); return; }
+    openWizard(true);
+  }
+
+  if (new URLSearchParams(location.search).has('smoke')) window.__fm27 = { feedAdd, openWizard, closeWizard: () => { $('wizard').hidden = true; } };
 
   // ---------- événements ----------
   $('cap-fm').onclick = () => addCapture(A.capture.fm());
@@ -318,6 +433,9 @@
   $('win-refresh').onclick = refreshWindows;
   $('cap-clear').onclick = async () => { await A.capture.clear(); state.images = []; renderThumbs(); };
   $('analyze').onclick = analyze;
+  $('live-toggle').onclick = toggleLive;
+  $('feed-clear').onclick = () => { state.live.items = []; renderFeed(); };
+  A.live.onUpdate(onLive);
   $('cancel').onclick = () => A.cancelAnalyze();
   $('question').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) analyze(); });
   $('question').addEventListener('input', () => { state.drafts[state.section] = $('question').value; });

@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, globalShortcut, dialog, shell, safeStorage, Menu, session } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, dialog, shell, safeStorage, Menu, session, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -19,8 +19,11 @@ const hardware = require('./hardware');
 const ollama = require('./ollama');
 const cap = require('./capture');
 const { ChangeDetector } = require('./diff');
+const { setupLocalEngine } = require('./engine-setup');
+const { LiveCoach } = require('./live');
+const { buildLivePrompt } = require('./prompts');
 
-const DEFAULTS = { provider: 'ollama', geminiModel: '', ollamaModel: '', shortcut: 'Control+Alt+A', career: 'Ma carrière', bounds: null, section: 'tactique' };
+const DEFAULTS = { provider: 'ollama', geminiModel: '', ollamaModel: '', shortcut: 'Control+Alt+A', career: 'Ma carrière', bounds: null, section: 'direct', setupDone: false, liveCloud: false };
 const ALLOWED_HOSTS = new Set(['ollama.com', 'aistudio.google.com', 'ai.google.dev', 'github.com', 'console.cloud.google.com']);
 
 // Données isolées pour les tests automatisés (jamais utilisé en usage normal).
@@ -37,6 +40,9 @@ let pullAbort = null;
 let watchTimer = null;
 let detector = new ChangeDetector();
 let fmWindowId = null;
+let setupAbort = null;
+let live = null;
+let watchUi = false;
 
 const dataDir = () => app.getPath('userData');
 const settingsFile = () => path.join(dataDir(), 'settings.json');
@@ -77,7 +83,7 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.on('close', () => { if (!win.isMinimized() && !win.isMaximized()) { settings.bounds = win.getBounds(); try { saveSettings(); } catch { /* ignoré */ } } });
   win.on('closed', () => { win = null; });
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), process.env.FM27_SMOKE_SHOTS ? { query: { smoke: '1' } } : undefined);
 }
 
 // ---- Suivi de santé du démarrage : permet de signaler un lancement qui n'a pas abouti. ----
@@ -122,25 +128,42 @@ async function captureFm({ fromShortcut = false } = {}) {
 // ---- Surveillance : détecte les changements d'écran, ne capture que localement, n'envoie jamais rien. ----
 async function watchTick() {
   try {
-    if (!fmWindowId) { const f = await cap.findFm(); fmWindowId = f?.id || null; if (!fmWindowId) return; }
+    if (!fmWindowId) { const f = await cap.findFm(); fmWindowId = f?.id || null; if (!fmWindowId) { if (live?.on) send('live:update', { type: 'notice', message: 'Football Manager est introuvable : lance le jeu (fenêtré ou plein écran fenêtré, pas réduit).' }); return; } }
     const sig = await cap.smallSignature((size) => cap.grabWindow(fmWindowId, size));
     if (detector.push(sig)) {
       const img = await cap.grabWindow(fmWindowId);
-      send('watch:changed', { thumb: img.resize({ width: 360 }).toDataURL(), at: Date.now() });
-      pendingWatchImage = img;
+      if (live?.on) live.onScreen({ jpeg: img.resize({ width: 1600 }).toJPEG(80), thumb: img.resize({ width: 360 }).toDataURL() });
+      if (watchUi) { send('watch:changed', { thumb: img.resize({ width: 360 }).toDataURL(), at: Date.now() }); pendingWatchImage = img; }
     }
   } catch (e) {
     if (e.code === 'gone' || e.code === 'nofm') fmWindowId = null;
-    send('watch:changed', { error: e.message, code: e.code });
+    if (watchUi) send('watch:changed', { error: e.message, code: e.code });
+    else if (live?.on && e.code !== 'minimized') send('live:update', { type: 'notice', message: e.message });
   }
 }
 let pendingWatchImage = null;
 
-function setWatch(on) {
+function refreshWatchTimer() {
   if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
   detector = new ChangeDetector();
-  if (on) watchTimer = setInterval(() => watchTick(), 2500);
-  return !!on;
+  if (watchUi || live?.on) watchTimer = setInterval(() => watchTick(), 2500);
+}
+function setWatch(on) { watchUi = !!on; refreshWatchTimer(); return watchUi; }
+
+/** Analyse d'un écran pour le coach en direct : court, local par défaut. Le direct en ligne exige un accord explicite. */
+async function liveAnalyze(payload, previous) {
+  const provider = settings.provider;
+  if (provider === 'gemini' && !settings.liveCloud) throw new AiError('forbidden', 'Le direct avec Gemini n’est pas activé : il enverrait chaque nouvel écran à Google. Active-le dans les réglages, ou utilise le moteur local.');
+  const model = provider === 'ollama' ? settings.ollamaModel : settings.geminiModel;
+  if (!model) throw new AiError('model_missing', 'Aucun modèle choisi : ouvre les réglages IA.');
+  const prompt = buildLivePrompt({ context: store.context(sanitizeCareer(settings.career), 4000), previous });
+  return analyze({ provider, key: geminiKey, model, mode: 'direct', prompt, images: [payload.jpeg.toString('base64')], maxTokens: 320 });
+}
+
+function makeSelfTestImage() {
+  const w = 160, h = 90, buf = Buffer.alloc(w * h * 4, 255);
+  for (let y = 30; y < 60; y++) for (let x = 30; x < 130; x++) { const i = (y * w + x) * 4; buf[i] = 46; buf[i + 1] = 169; buf[i + 2] = 31; buf[i + 3] = 255; }
+  return nativeImage.createFromBitmap(buf, { width: w, height: h }).toJPEG(90).toString('base64');
 }
 
 // ---- IPC ----
@@ -153,6 +176,7 @@ function registerIpc() {
     for (const k of ['geminiModel', 'ollamaModel']) if (typeof patch[k] === 'string' && /^[A-Za-z0-9_.:\-\/]{0,80}$/.test(patch[k])) next[k] = patch[k];
     if (typeof patch.career === 'string') next.career = sanitizeCareer(patch.career);
     if (typeof patch.section === 'string' && MODES[patch.section]) next.section = patch.section;
+    for (const k of ['setupDone', 'liveCloud']) if (typeof patch[k] === 'boolean') next[k] = patch[k];
     if (typeof patch.shortcut === 'string' && patch.shortcut !== settings.shortcut) { registerShortcut(patch.shortcut); next.shortcut = patch.shortcut; }
     settings = next; saveSettings(); return settings;
   });
@@ -179,6 +203,18 @@ function registerIpc() {
   });
   handle('ollama:cancelPull', () => { pullAbort?.abort(); return true; });
   handle('hardware:detect', () => hardware.detect());
+  handle('engine:setup', async () => {
+    if (setupAbort) throw new Error('Une installation est déjà en cours.');
+    setupAbort = new AbortController();
+    try {
+      const r = await setupLocalEngine({ ollama, hardware, signal: setupAbort.signal, tmpDir: app.getPath('temp'), onStep: (st) => send('engine:step', st),
+        selfTest: (tag) => analyze({ provider: 'ollama', model: tag, mode: 'discussion', question: 'Réponds uniquement par le mot OK.', images: [makeSelfTestImage()], maxTokens: 30 }) });
+      settings = { ...settings, provider: 'ollama', ollamaModel: r.model, setupDone: true }; saveSettings();
+      return { ...r, settings };
+    } finally { setupAbort = null; }
+  });
+  handle('engine:cancel', () => { setupAbort?.abort(); return true; });
+  handle('live:set', (on) => { if (on) live.start(); else live.stop(); refreshWatchTimer(); return live.on; });
 
   handle('capture:windows', () => cap.listWindows());
   handle('capture:screens', () => cap.listScreens());
@@ -211,7 +247,9 @@ function registerIpc() {
     const q = String(question || '').trim().slice(0, 6000);
     if (!q) throw new Error('Écris d’abord ta question.');
     if (!Array.isArray(imageIds) || imageIds.length > cap.MAX_IMAGES) throw new Error('Sélection de captures invalide.');
-    if (mode !== 'discussion' && !imageIds.length) throw new Error('Ajoute au moins une capture : l’adjoint ne devine jamais un écran qu’il ne voit pas.');
+    let ids = imageIds;
+    // Sans capture sélectionnée, l'adjoint regarde lui-même l'écran de Football Manager (pas besoin d'ajouter d'images).
+    if (!ids.length && mode !== 'discussion') { const item = await captureFm(); ids = [item.id]; send('capture:added', item); }
     const name = sanitizeCareer(career || settings.career);
     const provider = settings.provider;
     const model = provider === 'ollama' ? settings.ollamaModel : settings.geminiModel;
@@ -219,9 +257,9 @@ function registerIpc() {
     currentAbort = new AbortController();
     try {
       const history = mode === 'discussion' ? store.messages(name).slice(-10) : [];
-      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, images: bank.base64(imageIds), signal: currentAbort.signal });
+      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, images: bank.base64(ids), signal: currentAbort.signal });
       if (mode === 'discussion') { store.addMessage(name, 'user', q); store.addMessage(name, 'assistant', answer); }
-      return store.addReport(name, { mode, question: q, answer, engine: provider, model, images: imageIds.length });
+      return store.addReport(name, { mode, question: q, answer, engine: provider, model, images: ids.length });
     } finally { currentAbort = null; }
   });
   handle('analyze:cancel', () => { currentAbort?.abort(); return true; });
@@ -274,7 +312,12 @@ app.whenReady().then(() => {
   updater = new UpdateManager({ autoUpdater, currentVersion: app.getVersion(), packaged: app.isPackaged });
   updater.on('state', (s) => send('update:state', s));
 
+  live = new LiveCoach({ analyze: liveAnalyze, emit: (ev) => { send('live:update', ev); if (ev.type === 'state') refreshWatchTimer(); }, minIntervalMs: 12000 });
   registerIpc();
+  // L'IA locale démarre en même temps que l'adjoint si elle est installée.
+  ollama.status().then(async (st) => {
+    if (st.installed && !st.running) { await ollama.start().catch((e) => logger.warn('Démarrage d’Ollama : ' + e.message)); }
+  }).catch(() => {});
   try { registerShortcut(settings.shortcut); } catch (e) { logger.warn('Raccourci non enregistré : ' + e.message); }
   createWindow();
   win.webContents.once('did-finish-load', () => {
@@ -296,9 +339,13 @@ async function runSmoke() {
     out.capture = { windows: null, screens: null, screenGrab: null };
     try { out.capture.windows = (await cap.listWindows()).length; out.capture.screens = (await cap.listScreens()).length; } catch (e) { out.capture.error = String(e.message || e); }
     try { const sc = (await cap.listScreens())[0]; await cap.grabScreen(sc.id); out.capture.screenGrab = 'ok'; } catch (e) { out.capture.screenGrab = e.code || String(e.message || e).slice(0, 80); }
-    out.ok = out.dom.nav === 6 && out.dom.ver === app.getVersion() && out.dom.title.length > 3 && (process.platform !== 'win32' || out.keyRoundTrip === true);
+    out.ok = out.dom.nav === 7 && out.dom.ver === app.getVersion() && out.dom.title.length > 3 && (process.platform !== 'win32' || out.keyRoundTrip === true);
     if (process.env.FM27_SMOKE_SHOTS) { // captures d'écran supplémentaires (revue visuelle de l'interface)
       const dir = process.env.FM27_SMOKE_SHOTS; const snap = async (n) => fs.writeFileSync(path.join(dir, n), (await win.webContents.capturePage()).toPNG());
+      await snap('wizard.png');
+      await win.webContents.executeJavaScript(`__fm27.closeWizard(); const th='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="203"><rect width="360" height="203" fill="#16324f"/><text x="20" y="110" fill="#fff" font-size="22">Écran FM (exemple)</text></svg>'); __fm27.feedAdd({id:1,state:'done',at:Date.now()-40000,thumb:th,answer:'Page « Effectif » lue.\\n- Deux milieux axiaux ont le même profil : à vérifier avec la page des rôles.\\n- Illisible : la colonne « Forme ».'}); __fm27.feedAdd({id:2,state:'quiet',at:Date.now()-20000,thumb:th}); __fm27.feedAdd({id:3,state:'analyzing',at:Date.now(),thumb:th});`);
+      await new Promise((r) => setTimeout(r, 400)); await snap('direct.png');
+      await win.webContents.executeJavaScript(`document.querySelectorAll('#nav button')[1].click()`);
       await win.webContents.executeJavaScript(`document.getElementById('report').replaceChildren(Markdown.render(document, ${JSON.stringify('## Faits lus\n- **Formation** : 4-2-3-1 (Capture A)\n- **Milieu axial gauche** : rôle lu à l\u2019écran\n\n## Incertain ou illisible\n- Les consignes sans ballon ne sont pas visibles.\n\n## Diagnostic et hypothèses\nHypothèse : le milieu manque de soutien (à vérifier sur plusieurs matchs).\n\n## Corrections\n1. **Problème observé** : peu de couverture dans le couloir.\n2. **Éléments** : voir Capture A.\n3. **Changement conseillé** : demander à l\u2019ailier de rester plus bas.\n\n## Écrans à fournir ensuite\n- Page des consignes avec ballon.')}))`);
       await snap('report.png');
       await win.webContents.executeJavaScript(`document.getElementById('engine-pill').click()`); await new Promise((r) => setTimeout(r, 2500)); await snap('settings-local.png');

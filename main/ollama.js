@@ -84,4 +84,48 @@ async function pull(model, onProgress, signal, fetchImpl = fetch) {
   return true;
 }
 
-module.exports = { status, start, installWithWinget, pull, createPullTracker, binaryPath, OLLAMA };
+const INSTALLER_URL = 'https://ollama.com/download/OllamaSetup.exe';
+
+/** Télécharge l'installateur officiel, avec reprise (Range) si un téléchargement partiel existe. */
+async function downloadInstaller(dest, onProgress, signal, fetchImpl = fetch) {
+  let have = 0;
+  try { have = fs.statSync(dest).size; } catch { /* nouveau */ }
+  let res = await fetchImpl(INSTALLER_URL, { signal, headers: have ? { Range: `bytes=${have}-` } : {} });
+  if (res.status === 416) { try { fs.unlinkSync(dest); } catch { /* ignoré */ } have = 0; res = await fetchImpl(INSTALLER_URL, { signal }); }
+  if (!res.ok) throw new AiError('connection', `Téléchargement d’Ollama impossible (HTTP ${res.status}).`);
+  const resumed = res.status === 206;
+  if (!resumed) have = 0;
+  const total = have + Number(res.headers.get('content-length') || 0);
+  const out = fs.createWriteStream(dest, { flags: resumed ? 'a' : 'w' });
+  const reader = res.body.getReader();
+  let done = have;
+  try {
+    for (;;) {
+      const { value, done: end } = await reader.read();
+      if (end) break;
+      if (!out.write(value)) await new Promise((r) => out.once('drain', r));
+      done += value.length;
+      onProgress({ done, total, percent: total ? Math.round((done / total) * 100) : null });
+    }
+  } finally { await new Promise((r) => out.end(r)); }
+  if (total && done < total) throw new AiError('connection', 'Téléchargement incomplet : relance pour le reprendre.');
+  return dest;
+}
+
+/** Exige une signature Authenticode valide dont le signataire contient « Ollama » ; sinon on n'exécute rien. */
+function verifySignature(file) {
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-Command', `$s=Get-AuthenticodeSignature -LiteralPath '${file.replace(/'/g, "''")}'; @{status=[string]$s.Status; subject=[string]$s.SignerCertificate.Subject} | ConvertTo-Json -Compress`], { windowsHide: true, timeout: 60000 }, (err, stdout) => {
+      if (err) return reject(new Error('Vérification de la signature impossible.'));
+      try { resolve(JSON.parse(stdout)); } catch { reject(new Error('Vérification de la signature illisible.')); }
+    });
+  });
+}
+
+function runSilent(file) {
+  return new Promise((resolve, reject) => {
+    execFile(file, ['/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'], { windowsHide: true, timeout: 20 * 60 * 1000 }, (err) => (err ? reject(new Error('L’installation d’Ollama a échoué : ' + String(err.message).slice(0, 160))) : resolve(true)));
+  });
+}
+
+module.exports = { status, start, installWithWinget, pull, createPullTracker, binaryPath, downloadInstaller, verifySignature, runSilent, INSTALLER_URL, OLLAMA };

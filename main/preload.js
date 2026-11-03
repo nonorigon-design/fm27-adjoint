@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('adjoint', {
   gemini: { models: invoke('gemini:models') },
   ollama: { status: invoke('ollama:status'), start: invoke('ollama:start'), install: invoke('ollama:install'), pull: invoke('ollama:pull'), cancelPull: invoke('ollama:cancelPull'), onProgress: listen('ollama:progress') },
   hardware: invoke('hardware:detect'),
+  engine: { setup: invoke('engine:setup'), cancel: invoke('engine:cancel'), onStep: listen('engine:step') },
+  live: { set: invoke('live:set'), onUpdate: listen('live:update') },
   capture: {
     windows: invoke('capture:windows'), screens: invoke('capture:screens'),
     window: invoke('capture:window'), screen: invoke('capture:screen'), fm: invoke('capture:fm'),

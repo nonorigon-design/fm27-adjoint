@@ -1,7 +1,7 @@
 {
   "name": "fm27-adjoint",
   "productName": "FM27 Adjoint",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Entraîneur adjoint personnel pour Football Manager 27 (captures d'écran + IA, en français).",
   "main": "main/main.js",
   "author": "nonorigon-design",
@@ -16,11 +16,34 @@
     "appId": "fr.nonorigon.fm27adjoint",
     "productName": "FM27 Adjoint",
     "artifactName": "FM27-Adjoint-Setup-${version}.${ext}",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main/**", "renderer/**", "package.json"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main/**",
+      "renderer/**",
+      "package.json"
+    ],
     "asar": true,
-    "publish": [{ "provider": "github", "owner": "nonorigon-design", "repo": "fm27-adjoint" }],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "nonorigon-design",
+        "repo": "fm27-adjoint"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
     "nsis": {
       "oneClick": true,
       "perMachine": false,

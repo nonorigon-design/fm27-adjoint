@@ -23,6 +23,11 @@ FORMAT D'UNE CORRECTION (au maximum 3, par ordre de priorité)
 STRUCTURE DE RÉPONSE : ## Faits lus / ## Incertain ou illisible / ## Diagnostic et hypothèses / ## Corrections / ## Comment vérifier / ## Écrans à fournir ensuite`;
 
 const MODES = {
+  direct: {
+    label: 'Coach en direct',
+    instruction: "Tu observes l'écran en direct, comme un adjoint assis à côté du manager.",
+    placeholder: "Pose une question en direct : l'adjoint regarde ton écran FM tout seul.",
+  },
   tactique: {
     label: 'Tactique',
     instruction: "Analyse la formation, les rôles et les consignes avec et sans ballon visibles. Vérifie la cohérence entre les rôles voisins (couloirs, axe, milieu) et avec les attributs des joueurs si visibles. Propose des corrections argumentées.",
@@ -65,4 +70,18 @@ function buildPrompt({ mode, question, context, imageCount, history }) {
   return parts.join('\n');
 }
 
-module.exports = { SYSTEM, MODES, buildPrompt };
+/** Prompt du mode direct : court, sans répéter, et sait dire qu'il n'y a rien à signaler. */
+function buildLivePrompt({ context, previous }) {
+  const parts = [SYSTEM.split('STRUCTURE DE RÉPONSE')[0],
+    `\nMODE COACH EN DIRECT. Tu vois l'écran actuel de Football Manager (une seule capture).
+1. Commence par l'intitulé exact de l'écran lu (ex. : nom de la page visible). S'il ne ressemble pas à Football Manager, réponds seulement : « Écran non reconnu ».
+2. Donne 1 à 3 observations ou conseils COURTS et utiles pour CET écran, en t'appuyant uniquement sur ce qui est lisible. Maximum 110 mots, sans titres ni sections.
+3. Signale en une ligne ce qui est illisible ou manquant si cela change ton conseil.
+4. Si rien d'utile n'est à dire, réponds exactement : RAS
+5. Ne répète pas un conseil déjà donné.`];
+  if (context) parts.push(`\nHISTORIQUE DE LA CARRIÈRE (indicatif) :\n${context}`);
+  if (previous && previous.length) parts.push('\nCONSEILS DÉJÀ DONNÉS DANS CETTE SESSION (ne pas répéter) :\n' + previous.map((t) => '- ' + t.replace(/\s+/g, ' ').slice(0, 220)).join('\n'));
+  return parts.join('\n');
+}
+
+module.exports = { SYSTEM, MODES, buildPrompt, buildLivePrompt };

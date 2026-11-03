@@ -50,7 +50,7 @@ async function geminiModels(key, opts = {}) {
   return { models: names, default: pickGeminiDefault(names) };
 }
 
-async function geminiAnalyze({ key, model, prompt, images, signal, fetchImpl }) {
+async function geminiAnalyze({ key, model, prompt, images, signal, fetchImpl, maxTokens }) {
   if (!/^[A-Za-z0-9_.\-]+$/.test(model || '')) throw new AiError('model_missing', 'Choisis un modèle Gemini.');
   const parts = [{ text: prompt }];
   images.forEach((b64, i) => {
@@ -58,7 +58,7 @@ async function geminiAnalyze({ key, model, prompt, images, signal, fetchImpl }) 
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: b64 } });
   });
   const data = await geminiFetch(`${GEMINI}/models/${model}:generateContent`, {
-    key, signal, fetchImpl, body: { contents: [{ role: 'user', parts }] },
+    key, signal, fetchImpl, body: { contents: [{ role: 'user', parts }], ...(maxTokens ? { generationConfig: { maxOutputTokens: maxTokens } } : {}) },
   });
   const cand = (data.candidates || [])[0];
   const text = (cand?.content?.parts || []).filter((p) => !p.thought && p.text).map((p) => p.text).join('\n').trim();
@@ -81,14 +81,14 @@ async function ollamaFetch(path, { body, signal, fetchImpl = fetch, method } = {
   return res;
 }
 
-async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl }) {
+async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens }) {
   if (!/^[A-Za-z0-9_.:\-\/]+$/.test(model || '')) throw new AiError('model_missing', 'Choisis un modèle local.');
   const res = await ollamaFetch('/api/chat', {
     signal, fetchImpl,
     body: {
       model, stream: false,
       keep_alive: '2m', // libère la mémoire peu après l'analyse pour ne pas pénaliser FM
-      options: { num_ctx: 8192, temperature: 0.3 },
+      options: { num_ctx: 8192, temperature: 0.3, ...(maxTokens ? { num_predict: maxTokens } : {}) },
       messages: [{ role: 'user', content: prompt, images }],
     },
   });
@@ -98,12 +98,12 @@ async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl }) {
   return text;
 }
 
-async function analyze({ provider, key, model, mode, question, context, history, images, signal, fetchImpl }) {
-  const prompt = buildPrompt({ mode, question, context, history, imageCount: images.length });
+async function analyze({ provider, key, model, mode, question, context, history, images, signal, fetchImpl, prompt: custom, maxTokens }) {
+  const prompt = custom || buildPrompt({ mode, question, context, history, imageCount: images.length });
   try {
-    if (provider === 'ollama') return await ollamaAnalyze({ model, prompt, images, signal, fetchImpl });
+    if (provider === 'ollama') return await ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens });
     if (!normalizeKey(key)) throw new AiError('invalid_key', 'Aucune clé Gemini enregistrée : ouvre les réglages IA.');
-    return await geminiAnalyze({ key, model, prompt, images, signal, fetchImpl });
+    return await geminiAnalyze({ key, model, prompt, images, signal, fetchImpl, maxTokens });
   } catch (e) {
     if (e instanceof AiError) { e.message = redact(e.message, [key]); throw e; }
     throw new AiError('server', redact(String(e?.message || e), [key]));

@@ -61,3 +61,10 @@ Développement local : `npm install`, `npm start`.
 * L'installateur n'est pas signé (avertissement SmartScreen).
 * Pas de retour arrière automatique intégré : si une version ne démarre pas, l'application le signale au lancement suivant et propose de réinstaller la précédente depuis *Releases*. La protection principale est que CI ne publie qu'une version qui a démarré sur Windows.
 * Une image fixe ne montre pas les déplacements : l'adjoint ne les devine pas. Les conseils viennent d'un modèle généraliste : vérifie chiffres et intitulés dans FM.
+
+
+## Nouveautés 2.1.0
+
+- **Coach en direct** : l'adjoint observe Football Manager tout seul (aucune capture à ajouter), donne un conseil court à chaque nouvel écran et se tait (« RAS ») quand il n'y a rien d'utile.
+- **IA gratuite installée au lancement** : assistant de première utilisation qui installe le moteur local (Ollama) et télécharge le modèle adapté à votre machine ; le moteur démarre ensuite avec l'application.
+- **« Analyser maintenant »** capture lui-même la fenêtre FM si aucune image n'est choisie.

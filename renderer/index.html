@@ -32,7 +32,15 @@
     </header>
     <div id="notice" class="banner" hidden></div>
 
-    <div class="grid">
+    <div class="grid" id="grid">
+      <section class="card live" id="live-card">
+        <div class="card-h"><h2>Coach en direct</h2><span class="live-state" id="live-state">Arrêté</span></div>
+        <p class="live-lead">L’adjoint regarde ton écran Football Manager <b>tout seul</b> : à chaque nouvel écran, il te donne un conseil court. Tu n’as aucune capture à ajouter.</p>
+        <button class="btn primary big live-btn" id="live-toggle">Démarrer le coach en direct</button>
+        <div id="live-opts" class="live-opts"></div>
+        <p class="hint" id="live-privacy"></p>
+      </section>
+
       <section class="card" id="capture-card">
         <div class="card-h"><h2>1 · Observer le jeu</h2><span class="count" id="count">0 / 6</span></div>
         <div class="row">
@@ -77,6 +85,11 @@
         <div class="progress" id="analyze-progress" hidden><span></span><em id="progress-text">Analyse en cours…</em></div>
       </section>
 
+      <section class="card report" id="feed-card">
+        <div class="card-h"><h2>Conseils en direct</h2><button class="btn small ghost" id="feed-clear">Effacer</button></div>
+        <div id="feed" class="feed"></div>
+      </section>
+
       <section class="card report" id="report-card">
         <div class="card-h"><h2>3 · Le regard de l’adjoint</h2>
           <span class="row"><button class="btn small ghost" id="copy">Copier</button><button class="btn small ghost" id="export">Exporter</button></span>
@@ -87,6 +100,7 @@
   </main>
 </div>
 
+<div id="wizard" class="wizard" hidden role="dialog" aria-modal="true" aria-labelledby="wiz-title"><div class="wizard-in" id="wizard-body"></div></div>
 <aside id="drawer" class="drawer" hidden aria-label="Panneau"><div class="drawer-in"><button class="close" id="drawer-close" aria-label="Fermer">×</button><div id="drawer-body"></div></div></aside>
 <div id="lightbox" class="lightbox" hidden><img alt="Aperçu de la capture"></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
