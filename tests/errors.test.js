@@ -43,3 +43,9 @@ test('Ollama : modèle sans vision, mémoire, absent', () => {
   assert.equal(classifyOllama(500, 'model requires more system memory (9.1 GiB) than is available').kind, 'memory');
   assert.equal(classifyOllama(404, 'model "x" not found, try pulling it first').kind, 'model_missing');
 });
+
+test('ollama : requête trop grande pour le contexte → message clair (pas « service indisponible »)', () => {
+  const { classifyOllama } = require('../main/errors');
+  const e = classifyOllama(400, '{"error":"request (22220 tokens) exceeds the available context size (8192 tokens)"}');
+  assert.equal(e.kind, 'too_big');
+});

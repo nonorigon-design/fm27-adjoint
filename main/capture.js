@@ -20,15 +20,17 @@ class ImageBank {
     const size = img.getSize();
     const jpeg = img.resize(size.width > 2560 ? { width: 2560 } : {}).toJPEG(90);
     const thumb = img.resize({ width: 360 }).toDataURL();
-    this.map.set(id, { jpeg, label, w: size.width, h: size.height, at: Date.now() });
+    this.map.set(id, { img, jpeg, label, w: size.width, h: size.height, at: Date.now() });
     return { id, label, thumb, w: size.width, h: size.height };
   }
   remove(id) { this.map.delete(id); }
   clear() { this.map.clear(); }
-  base64(ids) {
+  /** maxWidth : réduit les images (IA locale), pour rester dans la mémoire de contexte du modèle. */
+  base64(ids, { maxWidth } = {}) {
     return ids.map((id) => {
       const e = this.map.get(id);
       if (!e) throw new CaptureError('missing', 'Une capture sélectionnée n’existe plus. Ajoute-la à nouveau.');
+      if (maxWidth && e.img && e.w > maxWidth) return e.img.resize({ width: maxWidth, quality: 'good' }).toJPEG(85).toString('base64');
       return e.jpeg.toString('base64');
     });
   }

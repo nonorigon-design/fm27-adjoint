@@ -23,7 +23,7 @@
     entrainement: ['Prépare la semaine.', 'Programme, intensité, entraînements individuels et forme des joueurs.'],
     discussion: ['Parlons football.', 'Pose une question, avec ou sans capture. Le contexte de la carrière est conservé.'],
   };
-  const KIND_TITLES = { invalid_key: 'Clé Gemini invalide', forbidden: 'Accès refusé', quota: 'Quota atteint', model_missing: 'Modèle indisponible', model_incompatible: 'Modèle incompatible avec les images', connection: 'Problème de connexion', ollama_down: 'Moteur local injoignable', memory: 'Mémoire insuffisante', empty: 'Réponse vide', server: 'Service indisponible' };
+  const KIND_TITLES = { too_big: 'Trop de captures d’un coup', invalid_key: 'Clé Gemini invalide', forbidden: 'Accès refusé', quota: 'Quota atteint', model_missing: 'Modèle indisponible', model_incompatible: 'Modèle incompatible avec les images', connection: 'Problème de connexion', ollama_down: 'Moteur local injoignable', memory: 'Mémoire insuffisante', empty: 'Réponse vide', server: 'Service indisponible' };
 
   const state = { live: { on: false, items: [] }, setupRunning: false, info: null, settings: null, section: 'tactique', images: [], busy: false, keyStatus: { has: false, tail: '' }, ollama: null, models: { gemini: [], ollama: [] }, update: null, lastReport: null, drafts: {}, lastWatch: null };
 

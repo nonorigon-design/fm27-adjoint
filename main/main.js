@@ -274,7 +274,7 @@ function registerIpc() {
     currentAbort = new AbortController();
     try {
       const history = mode === 'discussion' ? store.messages(name).slice(-10) : [];
-      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, images: bank.base64(ids), signal: currentAbort.signal });
+      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, images: bank.base64(ids, provider === 'ollama' ? { maxWidth: ids.length === 1 ? 1600 : ids.length <= 3 ? 1280 : 960 } : {}), signal: currentAbort.signal });
       if (mode === 'discussion') { store.addMessage(name, 'user', q); store.addMessage(name, 'assistant', answer); }
       return store.addReport(name, { mode, question: q, answer, engine: provider, model, images: ids.length });
     } finally { currentAbort = null; }

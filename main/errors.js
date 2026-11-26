@@ -73,6 +73,9 @@ function classifyOllama(status, text) {
   if (/requires more system memory|out of memory|insufficient memory|failed to allocate/i.test(msg)) {
     return new AiError('memory', 'Pas assez de mémoire pour ce modèle pendant que FM tourne. Choisis un modèle plus petit.');
   }
+  if (/exceeds the available context|context size|context length/i.test(msg)) {
+    return new AiError('too_big', 'Trop d’informations d’un coup pour l’IA locale : garde 1 à 3 captures (retire les autres), puis relance.');
+  }
   if (status === 404 || /not found/i.test(msg)) return new AiError('model_missing', 'Modèle local absent : télécharge-le depuis les réglages IA.');
   return new AiError('server', `Ollama a renvoyé une erreur (HTTP ${status}) : ${msg.slice(0, 200)}`);
 }

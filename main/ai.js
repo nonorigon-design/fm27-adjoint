@@ -86,7 +86,7 @@ async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxToke
   const body = {
     model, stream: false,
     keep_alive: '2m', // libère la mémoire peu après l'analyse pour ne pas pénaliser FM
-    options: { num_ctx: 8192, temperature: 0.3, ...(maxTokens ? { num_predict: maxTokens } : {}) },
+    options: { num_ctx: images && images.length > 1 ? 16384 : 8192, temperature: 0.3, ...(maxTokens ? { num_predict: maxTokens } : {}) },
     messages: [{ role: 'user', content: prompt, images }],
   };
   // think:false — sinon les modèles « réflexion » (qwen3-vl) dépensent tout leur budget en raisonnement caché et renvoient un texte vide.
