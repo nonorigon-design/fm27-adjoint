@@ -133,7 +133,7 @@ async function watchTick() {
     const sig = await cap.smallSignature((size) => cap.grabWindow(fmWindowId, size));
     if (detector.push(sig)) {
       const img = await cap.grabWindow(fmWindowId);
-      if (live?.on) live.onScreen({ jpeg: img.resize({ width: 1600 }).toJPEG(80), thumb: img.resize({ width: 360 }).toDataURL() });
+      if (live?.on) live.onScreen({ jpeg: img.resize({ width: 1440 }).toJPEG(80), thumb: img.resize({ width: 360 }).toDataURL() });
       if (watchUi) { send('watch:changed', { thumb: img.resize({ width: 360 }).toDataURL(), at: Date.now() }); pendingWatchImage = img; }
     }
   } catch (e) {
@@ -274,7 +274,7 @@ function registerIpc() {
     currentAbort = new AbortController();
     try {
       const history = mode === 'discussion' ? store.messages(name).slice(-10) : [];
-      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, images: bank.base64(ids, provider === 'ollama' ? { maxWidth: ids.length === 1 ? 1600 : ids.length <= 3 ? 1280 : 960 } : {}), signal: currentAbort.signal });
+      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, images: bank.base64(ids, provider === 'ollama' ? { maxWidth: ids.length === 1 ? 1440 : ids.length <= 3 ? 1152 : 896 } : {}), signal: currentAbort.signal });
       if (mode === 'discussion') { store.addMessage(name, 'user', q); store.addMessage(name, 'assistant', answer); }
       return store.addReport(name, { mode, question: q, answer, engine: provider, model, images: ids.length });
     } finally { currentAbort = null; }
