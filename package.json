@@ -1,7 +1,7 @@
 {
   "name": "fm27-adjoint",
   "productName": "FM27 Adjoint",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Entraîneur adjoint personnel pour Football Manager 27 (captures d'écran + IA, en français).",
   "main": "main/main.js",
   "author": "nonorigon-design",
