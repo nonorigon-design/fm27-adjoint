@@ -81,39 +81,62 @@ async function ollamaFetch(path, { body, signal, fetchImpl = fetch, method } = {
   return res;
 }
 
-async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens }) {
+const isThinkingModel = (m) => /qwen3-vl/i.test(m) && !/instruct/i.test(m);
+
+/** Lit une réponse Ollama en flux (NDJSON) et rappelle onToken avec le texte complet reçu jusque-là. */
+async function readStream(res, onToken) {
+  const reader = res.body.getReader(); const dec = new TextDecoder();
+  let buf = '', content = '', thinking = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let j; try { j = JSON.parse(line); } catch { continue; }
+      if (j.error) throw new AiError('server', 'Ollama : ' + String(j.error).slice(0, 200));
+      if (j.message?.content) { content += j.message.content; onToken(content); }
+      if (j.message?.thinking) thinking += j.message.thinking;
+    }
+  }
+  return { message: { content, thinking } };
+}
+
+async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens, onToken }) {
   if (!/^[A-Za-z0-9_.:\-\/]+$/.test(model || '')) throw new AiError('model_missing', 'Choisis un modèle local.');
+  const thinking = isThinkingModel(model);
+  const stream = typeof onToken === 'function';
   const body = {
-    model, stream: false,
-    keep_alive: '2m', // libère la mémoire peu après l'analyse pour ne pas pénaliser FM
-    options: { num_ctx: 16384, temperature: 0.3, ...(maxTokens ? { num_predict: maxTokens } : {}) },
-    messages: [{ role: 'user', content: prompt, images }],
+    model, stream,
+    keep_alive: '15m', // garde le modèle chargé entre deux analyses : pas de rechargement de plusieurs secondes à chaque fois
+    options: { num_ctx: thinking ? 16384 : 8192, temperature: 0.3, num_predict: maxTokens || 900 },
+    messages: [{ role: 'user', content: (thinking ? '/no_think\n' : '') + prompt, images }],
   };
-  // think:false — sinon les modèles « réflexion » (qwen3-vl) dépensent tout leur budget en raisonnement caché et renvoient un texte vide.
-  let res;
-  try { res = await ollamaFetch('/api/chat', { signal, fetchImpl, body: { ...body, think: false } }); }
+  const send = async (b) => { const r = await ollamaFetch('/api/chat', { signal, fetchImpl, body: b }); return stream ? readStream(r, onToken) : r.json(); };
+  // think:false — sinon les modèles « réflexion » dépensent tout leur budget en raisonnement caché.
+  let data;
+  try { data = await send({ ...body, think: false }); }
   catch (e) {
     if (!(e.kind === 'server' && /HTTP 400|think/i.test(e.message))) throw e; // ancienne version d'Ollama ou modèle sans option « think »
-    res = await ollamaFetch('/api/chat', { signal, fetchImpl, body });
+    data = await send(body);
   }
-  let data = await res.json();
   let text = String(data?.message?.content || '').trim();
-  // Modèles « réflexion » (qwen3-vl) : avec une version d'Ollama qui ignore think:false, tout part dans le raisonnement.
-  // On relance une fois avec /no_think et plus de place, puis on se rabat sur le raisonnement s'il est la seule sortie.
-  if (!text) {
-    const retry = { ...body, options: { ...body.options, num_predict: Math.max(1500, (maxTokens || 0) * 3) }, messages: [{ role: 'user', content: '/no_think\n' + prompt, images }] };
-    try { const r2 = await ollamaFetch('/api/chat', { signal, fetchImpl, body: { ...retry, think: false } }); data = await r2.json(); text = String(data?.message?.content || '').trim(); }
+  if (!text && thinking) {
+    const retry = { ...body, options: { ...body.options, num_predict: Math.max(1500, (maxTokens || 0) * 3) } };
+    try { data = await send({ ...retry, think: false }); text = String(data?.message?.content || '').trim(); }
     catch (e) { if (e?.kind === 'cancelled') throw e; }
-    if (!text) text = String(data?.message?.thinking || '').replace(/<\/?think>/g, '').trim();
   }
+  if (!text) text = String(data?.message?.thinking || '').replace(/<\/?think>/g, '').trim();
   if (!text) throw new AiError('empty', 'Le modèle local n’a renvoyé aucun texte. Mets Ollama à jour (ollama.com/download) ou choisis un autre modèle avec vision.');
   return text;
 }
 
-async function analyze({ provider, key, model, mode, question, context, history, images, signal, fetchImpl, prompt: custom, maxTokens, language }) {
+async function analyze({ provider, key, model, mode, question, context, history, images, signal, fetchImpl, prompt: custom, maxTokens, language, onToken }) {
   const prompt = custom || buildPrompt({ mode, question, context, history, imageCount: images.length, language });
   try {
-    if (provider === 'ollama') return await ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens });
+    if (provider === 'ollama') return await ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens, onToken });
     if (!normalizeKey(key)) throw new AiError('invalid_key', 'Aucune clé Gemini enregistrée : ouvre les réglages IA.');
     return await geminiAnalyze({ key, model, prompt, images, signal, fetchImpl, maxTokens });
   } catch (e) {

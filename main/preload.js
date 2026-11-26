@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('adjoint', {
   watch: { set: invoke('watch:set'), adopt: invoke('watch:adopt'), onChange: listen('watch:changed') },
   shortcut: { set: invoke('shortcut:set') },
   analyze: invoke('analyze:run'),
+  onPartial: listen('analyze:partial'),
   cancelAnalyze: invoke('analyze:cancel'),
   history: {
     careers: invoke('history:careers'), reports: invoke('history:reports'), messages: invoke('history:messages'),

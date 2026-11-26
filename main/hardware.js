@@ -2,11 +2,12 @@
 const os = require('os');
 const { execFile } = require('child_process');
 
+// Variantes « instruct » : réponse directe, sans phase de réflexion (2 à 4 fois plus rapides que les variantes par défaut).
 // Tailles : pages Ollama qwen3-vl (2b ≈ 1,9 Go ; 4b ≈ 3,3 Go ; 8b ≈ 6,1 Go), relevées en août 2026.
 const MODELS = [
-  { tag: 'qwen3-vl:2b', sizeGb: 1.9, minVramGb: 3, minRamGb: 8, note: 'Très léger, qualité limitée sur les petits textes.' },
-  { tag: 'qwen3-vl:4b', sizeGb: 3.3, minVramGb: 6, minRamGb: 12, note: 'Compromis recommandé avec FM ouvert.' },
-  { tag: 'qwen3-vl:8b', sizeGb: 6.1, minVramGb: 10, minRamGb: 24, note: 'Meilleure lecture des écrans, mais lourd si FM tourne en même temps.' },
+  { tag: 'qwen3-vl:2b-instruct', sizeGb: 1.9, minVramGb: 3, minRamGb: 8, note: 'Très léger, qualité limitée sur les petits textes.' },
+  { tag: 'qwen3-vl:4b-instruct', sizeGb: 3.3, minVramGb: 6, minRamGb: 12, note: 'Compromis recommandé avec FM ouvert.' },
+  { tag: 'qwen3-vl:8b-instruct', sizeGb: 6.1, minVramGb: 10, minRamGb: 24, note: 'Meilleure lecture des écrans, mais lourd si FM tourne en même temps.' },
 ];
 
 /**

@@ -144,13 +144,17 @@
     if (!question) return toast('Écris d’abord ta question.', true);
     state.busy = true; $('analyze').disabled = true; $('cancel').hidden = false; $('analyze-progress').hidden = false;
     $('progress-text').textContent = state.settings.provider === 'ollama' ? 'Analyse locale en cours (peut durer une à plusieurs minutes)…' : 'Analyse en cours…';
+    const offPartial = A.onPartial ? A.onPartial((text) => {
+      if (state.section === 'direct') return;
+      $('report').replaceChildren(el('div', { class: 'report-meta', text: 'L’adjoint écrit…' }), window.Markdown.render(document, text));
+    }) : () => {};
     try {
       const r = await call(A.analyze({ mode: state.section, question, imageIds: state.images.map((i) => i.id), career: careerName() }));
       if (state.section === 'direct') { feedAdd({ id: 'q' + Date.now(), state: 'done', answer: r.answer, question, at: Date.now(), q: true }); $('question').value = ''; state.drafts.direct = ''; }
       else showReport(r);
       if (state.section === 'discussion') { $('question').value = ''; state.drafts.discussion = ''; renderThread(); }
     } catch (e) { if (e.kind !== 'cancelled') showError(e); else toast('Analyse annulée.'); }
-    finally { state.busy = false; $('analyze').disabled = false; $('cancel').hidden = true; $('analyze-progress').hidden = true; }
+    finally { offPartial(); state.busy = false; $('analyze').disabled = false; $('cancel').hidden = true; $('analyze-progress').hidden = true; }
   }
 
   // ---------- panneau latéral ----------
@@ -542,6 +546,29 @@
       } finally { off(); state.setupRunning = false; }
     };
   }
+
+  // Les variantes « instruct » répondent sans phase de réflexion : beaucoup plus rapides.
+  function offerFastModel(st) {
+    const cur = state.settings.ollamaModel || '';
+    const m = cur.match(/^qwen3-vl:(\d+b)$/i); if (!m) return;
+    const fast = `qwen3-vl:${m[1]}-instruct`;
+    const names = st.models.map((x) => x.name);
+    const box = $('notice'); box.hidden = false; box.replaceChildren();
+    if (names.includes(fast)) {
+      call(A.settings.set({ ollamaModel: fast })).then((s2) => { state.settings = s2; renderEngine(); box.hidden = true; toast('Modèle rapide activé : ' + fast); });
+      return;
+    }
+    const txt = el('span', { text: `Ton modèle ${cur} réfléchit longuement avant de répondre. La version rapide ${fast} répond 2 à 4 fois plus vite (téléchargement unique de quelques Go). ` });
+    const btn = el('button', { class: 'btn small primary', text: 'Passer au modèle rapide' });
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const off = A.ollama.onProgress((p) => { btn.textContent = p.percent != null ? `Téléchargement ${p.percent} %` : 'Téléchargement…'; });
+      try { await call(A.ollama.pull(fast)); state.settings = await call(A.settings.set({ ollamaModel: fast })); renderEngine(); box.hidden = true; toast('Modèle rapide prêt : ' + fast); }
+      catch (e) { btn.disabled = false; btn.textContent = 'Réessayer'; toast(e.message, true); }
+      finally { off(); }
+    };
+    box.append(txt, btn);
+  }
   async function maybeOfferSetup() {
     if (state.settings.provider !== 'ollama') return;
     const st = await call(A.ollama.status()).catch(() => null);
@@ -552,6 +579,7 @@
       const pick = names.find((n) => /qwen3-vl/i.test(n)) || names.find((n) => /vl|vision|llava|gemma3|minicpm/i.test(n));
       if (pick) { state.settings = await call(A.settings.set({ ollamaModel: pick })); renderEngine(); toast('Modèle local sélectionné : ' + pick); }
     }
+    offerFastModel(st);
     const ready = st.installed && st.models.length > 0 && state.settings.ollamaModel;
     if (ready) { if (!st.running) call(A.ollama.start()).catch(() => {}); return; }
     openWizard(true);

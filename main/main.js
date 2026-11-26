@@ -260,6 +260,8 @@ function registerIpc() {
   handle('watch:adopt', () => { if (!pendingWatchImage) throw new Error('Aucune capture en attente.'); const it = bank.add(pendingWatchImage, 'Écran détecté'); pendingWatchImage = null; return it; });
   handle('shortcut:set', (acc) => { registerShortcut(acc); settings.shortcut = acc; saveSettings(); return acc; });
 
+  // Envoie le texte en cours d'écriture au plus toutes les 150 ms.
+  const throttledPartial = () => { let last = 0; return (text) => { const now = Date.now(); if (now - last > 150) { last = now; send('analyze:partial', text); } }; };
   handle('analyze:run', async ({ mode, question, imageIds = [], career }) => {
     if (!MODES[mode]) throw new Error('Section inconnue.');
     const q = String(question || '').trim().slice(0, 6000);
@@ -275,7 +277,7 @@ function registerIpc() {
     currentAbort = new AbortController();
     try {
       const history = mode === 'discussion' ? store.messages(name).slice(-10) : [];
-      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, language: settings.language, images: bank.base64(ids, provider === 'ollama' ? { maxWidth: ids.length === 1 ? 1440 : ids.length <= 3 ? 1152 : 896 } : {}), signal: currentAbort.signal });
+      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, language: settings.language, onToken: throttledPartial(), images: bank.base64(ids, provider === 'ollama' ? { maxWidth: ids.length === 1 ? 1440 : ids.length <= 3 ? 1152 : 896 } : {}), signal: currentAbort.signal });
       if (mode === 'discussion') { store.addMessage(name, 'user', q); store.addMessage(name, 'assistant', answer); }
       return store.addReport(name, { mode, question: q, answer, engine: provider, model, images: ids.length });
     } finally { currentAbort = null; }

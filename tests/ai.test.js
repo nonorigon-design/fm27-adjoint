@@ -47,11 +47,11 @@ test('Gemini : validation de clé par liste de modèles, filtre et choix par dé
   await assert.rejects(geminiModels('', {}), (e) => e.kind === 'invalid_key');
 });
 
-test('Ollama : format /api/chat, images, keep_alive court ; erreurs typées', async () => {
+test('Ollama : format /api/chat, images, modèle gardé chargé ; erreurs typées', async () => {
   let body;
   const ok = async (url, init) => { body = JSON.parse(init.body); return res(200, { message: { content: 'ok local' } }); };
   assert.equal(await analyze({ provider: 'ollama', model: 'qwen3-vl:4b', mode: 'debrief', question: 'q', images: ['x'], fetchImpl: ok }), 'ok local');
-  assert.equal(body.stream, false); assert.deepEqual(body.messages[0].images, ['x']); assert.equal(body.keep_alive, '2m');
+  assert.equal(body.stream, false); assert.deepEqual(body.messages[0].images, ['x']); assert.equal(body.keep_alive, '15m');
   const noVision = async () => res(400, { error: 'this model does not support images' });
   await assert.rejects(analyze({ provider: 'ollama', model: 'llama3', mode: 'debrief', question: 'q', images: ['x'], fetchImpl: noVision }), (e) => e.kind === 'model_incompatible');
   const refused = async () => { throw new TypeError('ECONNREFUSED'); };
@@ -124,4 +124,14 @@ test('la langue choisie est imposée au début et à la fin de la demande', () =
   assert.match(buildPrompt({ mode: 'tactique', question: 'q', imageCount: 0, language: 'es' }), /Responde SOLO en español/);
   assert.match(buildLivePrompt({ language: 'en' }), /Answer ONLY in English/);
   assert.match(buildPrompt({ mode: 'tactique', question: 'q', imageCount: 0 }), /UNIQUEMENT en français/); // par défaut
+});
+
+test('ollama en flux : le texte arrive au fur et à mesure, modèle instruct sans /no_think', async () => {
+  const lines = ['{"message":{"content":"Bon"}}\n', '{"message":{"content":"jour"}}\n{"done":true}\n'];
+  let sent;
+  const fetchImpl = async (url, opts) => { sent = JSON.parse(opts.body); let i = 0; return { ok: true, status: 200, body: { getReader: () => ({ read: async () => (i < lines.length ? { done: false, value: new TextEncoder().encode(lines[i++]) } : { done: true }) }) } }; };
+  const seen = [];
+  const out = await analyze({ provider: 'ollama', model: 'qwen3-vl:4b-instruct', mode: 'discussion', question: 'q', images: ['a'], fetchImpl, onToken: (t) => seen.push(t) });
+  assert.equal(out, 'Bonjour'); assert.deepEqual(seen, ['Bon', 'Bonjour']);
+  assert.equal(sent.stream, true); assert.ok(!sent.messages[0].content.startsWith('/no_think')); assert.equal(sent.options.num_ctx, 8192);
 });

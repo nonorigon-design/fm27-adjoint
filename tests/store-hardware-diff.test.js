@@ -34,9 +34,9 @@ test('discussion : messages conservés par carrière', () => {
 });
 
 test('modèle local adapté au matériel et prudent avec FM', () => {
-  assert.equal(recommend({ ramGb: 16, vramGb: 8 }).model.tag, 'qwen3-vl:4b');
-  assert.equal(recommend({ ramGb: 32, vramGb: 24 }).model.tag, 'qwen3-vl:8b');
-  assert.equal(recommend({ ramGb: 16, vramGb: 4 }).model?.tag, 'qwen3-vl:2b');
+  assert.equal(recommend({ ramGb: 16, vramGb: 8 }).model.tag, 'qwen3-vl:4b-instruct');
+  assert.equal(recommend({ ramGb: 32, vramGb: 24 }).model.tag, 'qwen3-vl:8b-instruct');
+  assert.equal(recommend({ ramGb: 16, vramGb: 4 }).model?.tag, 'qwen3-vl:2b-instruct');
   assert.equal(recommend({ ramGb: 8, vramGb: 2 }).model, null);
   assert.ok(recommend({ ramGb: 16, vramGb: null }).model.sizeGb <= 3.3);
 });
