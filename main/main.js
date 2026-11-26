@@ -21,9 +21,9 @@ const cap = require('./capture');
 const { ChangeDetector } = require('./diff');
 const { setupLocalEngine } = require('./engine-setup');
 const { LiveCoach } = require('./live');
-const { buildLivePrompt } = require('./prompts');
+const { buildLivePrompt, LANGUAGES } = require('./prompts');
 
-const DEFAULTS = { provider: 'ollama', geminiModel: '', ollamaModel: '', shortcut: 'Control+Alt+A', career: 'Ma carrière', bounds: null, section: 'direct', setupDone: false, liveCloud: false, clubs: {} };
+const DEFAULTS = { provider: 'ollama', geminiModel: '', ollamaModel: '', shortcut: 'Control+Alt+A', career: 'Ma carrière', bounds: null, section: 'direct', setupDone: false, liveCloud: false, clubs: {}, language: 'fr' };
 const ALLOWED_HOSTS = new Set(['ollama.com', 'aistudio.google.com', 'ai.google.dev', 'github.com', 'console.cloud.google.com']);
 
 // Données isolées pour les tests automatisés (jamais utilisé en usage normal).
@@ -157,7 +157,7 @@ async function liveAnalyze(payload, previous) {
   if (provider === 'gemini' && !settings.liveCloud) throw new AiError('forbidden', 'Le direct avec Gemini n’est pas activé : il enverrait chaque nouvel écran à Google. Active-le dans les réglages, ou utilise le moteur local.');
   const model = provider === 'ollama' ? settings.ollamaModel : settings.geminiModel;
   if (!model) throw new AiError('model_missing', 'Aucun modèle choisi : ouvre les réglages IA.');
-  const prompt = buildLivePrompt({ context: store.context(sanitizeCareer(settings.career), 4000), previous });
+  const prompt = buildLivePrompt({ context: store.context(sanitizeCareer(settings.career), 4000), previous, language: settings.language });
   return analyze({ provider, key: geminiKey, model, mode: 'direct', prompt, images: [payload.jpeg.toString('base64')], maxTokens: 320 });
 }
 
@@ -169,11 +169,12 @@ function makeSelfTestImage() {
 
 // ---- IPC ----
 function registerIpc() {
-  handle('app:info', () => ({ version: app.getVersion(), packaged: app.isPackaged, encryption: keystore.available(), failedPreviousBoot, modes: Object.fromEntries(Object.entries(MODES).map(([k, v]) => [k, { label: v.label, placeholder: v.placeholder }])), platform: process.platform }));
+  handle('app:info', () => ({ version: app.getVersion(), packaged: app.isPackaged, encryption: keystore.available(), failedPreviousBoot, modes: Object.fromEntries(Object.entries(MODES).map(([k, v]) => [k, { label: v.label, placeholder: v.placeholder }])), languages: Object.fromEntries(Object.entries(LANGUAGES).map(([k, v]) => [k, v.label])), platform: process.platform }));
   handle('settings:get', () => settings);
   handle('settings:set', (patch) => {
     const next = { ...settings };
     if (patch.provider === 'ollama') next.provider = 'ollama';
+    if (typeof patch.language === 'string' && LANGUAGES[patch.language]) next.language = patch.language;
     for (const k of ['geminiModel', 'ollamaModel']) if (typeof patch[k] === 'string' && /^[A-Za-z0-9_.:\-\/]{0,80}$/.test(patch[k])) next[k] = patch[k];
     if (typeof patch.career === 'string') next.career = sanitizeCareer(patch.career);
     if (typeof patch.section === 'string' && MODES[patch.section]) next.section = patch.section;
@@ -274,7 +275,7 @@ function registerIpc() {
     currentAbort = new AbortController();
     try {
       const history = mode === 'discussion' ? store.messages(name).slice(-10) : [];
-      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, images: bank.base64(ids, provider === 'ollama' ? { maxWidth: ids.length === 1 ? 1440 : ids.length <= 3 ? 1152 : 896 } : {}), signal: currentAbort.signal });
+      const answer = await analyze({ provider, key: geminiKey, model, mode, question: q, context: store.context(name), history, language: settings.language, images: bank.base64(ids, provider === 'ollama' ? { maxWidth: ids.length === 1 ? 1440 : ids.length <= 3 ? 1152 : 896 } : {}), signal: currentAbort.signal });
       if (mode === 'discussion') { store.addMessage(name, 'user', q); store.addMessage(name, 'assistant', answer); }
       return store.addReport(name, { mode, question: q, answer, engine: provider, model, images: ids.length });
     } finally { currentAbort = null; }

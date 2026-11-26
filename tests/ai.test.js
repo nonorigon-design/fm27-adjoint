@@ -115,3 +115,13 @@ test('ollama : modèle « réflexion » qui ne renvoie que son raisonnement → 
   assert.equal(out, 'OK lu sur l’image');
   assert.equal(calls, 2);
 });
+
+test('la langue choisie est imposée au début et à la fin de la demande', () => {
+  const { buildPrompt, buildLivePrompt } = require('../main/prompts');
+  const p = buildPrompt({ mode: 'tactique', question: 'q', imageCount: 1, language: 'fr' });
+  assert.match(p, /^[\s\S]*LANGUE DE RÉPONSE : Réponds UNIQUEMENT en français/);
+  assert.match(p, /RAPPEL — Réponds UNIQUEMENT en français[^\n]*$/);
+  assert.match(buildPrompt({ mode: 'tactique', question: 'q', imageCount: 0, language: 'es' }), /Responde SOLO en español/);
+  assert.match(buildLivePrompt({ language: 'en' }), /Answer ONLY in English/);
+  assert.match(buildPrompt({ mode: 'tactique', question: 'q', imageCount: 0 }), /UNIQUEMENT en français/); // par défaut
+});

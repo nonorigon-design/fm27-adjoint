@@ -162,6 +162,11 @@
     const s = state.settings, body = [];
     body.push(el('h2', { text: 'Réglages IA et application' }));
     body.push(el('p', { class: 'hint', text: 'L’adjoint utilise uniquement l’IA locale (Ollama) : gratuite, sans compte, et rien ne quitte ton PC.' }));
+    const langs = state.info.languages || { fr: 'Français' };
+    body.push(el('h3', { text: 'Langue de l’adjoint' }), el('div', { class: 'panel' },
+      el('select', { 'aria-label': 'Langue des réponses', onchange: async (e) => { state.settings = await call(A.settings.set({ language: e.target.value })); toast('Langue enregistrée : ' + langs[e.target.value] + '.'); } },
+        ...Object.entries(langs).map(([k, v]) => el('option', { value: k, text: v, selected: k === (state.settings.language || 'fr') }))),
+      el('p', { class: 'hint', text: 'L’adjoint répond toujours dans cette langue, même si FM est en anglais. Les noms des joueurs et les intitulés exacts du jeu restent tels quels.' })));
     body.push(await localPanel());
     body.push(el('h3', { text: 'Raccourci clavier global' }), shortcutPanel());
     body.push(el('h3', { text: 'Mises à jour' }), updatePanel());

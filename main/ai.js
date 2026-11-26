@@ -110,8 +110,8 @@ async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxToke
   return text;
 }
 
-async function analyze({ provider, key, model, mode, question, context, history, images, signal, fetchImpl, prompt: custom, maxTokens }) {
-  const prompt = custom || buildPrompt({ mode, question, context, history, imageCount: images.length });
+async function analyze({ provider, key, model, mode, question, context, history, images, signal, fetchImpl, prompt: custom, maxTokens, language }) {
+  const prompt = custom || buildPrompt({ mode, question, context, history, imageCount: images.length, language });
   try {
     if (provider === 'ollama') return await ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens });
     if (!normalizeKey(key)) throw new AiError('invalid_key', 'Aucune clé Gemini enregistrée : ouvre les réglages IA.');
