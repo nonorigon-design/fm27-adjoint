@@ -114,7 +114,11 @@ jobs:
           } elseif ($isTag) {
             gh release create $tag @files --title "FM27 Adjoint $env:VERSION" --notes "Installateur Windows. Les installations existantes se mettent a jour automatiquement au demarrage." --verify-tag
             if ($LASTEXITCODE -ne 0) { throw 'Creation de la release impossible' }
-          } else { Write-Host "Pas de release $tag : rien a publier depuis main."; "PUBLISHED=false" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV; exit 0 }
+          } elseif ($env:GITHUB_REF -eq 'refs/heads/main' -and $env:GITHUB_EVENT_NAME -eq 'push') {
+            # Nouvelle version du paquet poussée sur main : publication automatique, sans clic manuel.
+            gh release create $tag @files --title "FM27 Adjoint $env:VERSION" --notes "Installateur Windows. Les installations existantes se mettent a jour automatiquement." --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw 'Creation de la release impossible' }
+          } else { Write-Host "Pas de release $tag : rien a publier."; "PUBLISHED=false" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV; exit 0 }
           "PUBLISHED=true" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       - name: Pont de migration pour les anciennes versions Python

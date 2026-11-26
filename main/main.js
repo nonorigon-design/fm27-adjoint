@@ -335,6 +335,8 @@ app.whenReady().then(() => {
   win.webContents.once('did-finish-load', () => {
     if (process.env.FM27_SMOKE) return runSmoke();
     setTimeout(() => updater.check({ silent: true }), 3000);
+    // Vérifie aussi pendant que l'appli reste ouverte : la nouvelle version s'installe toute seule à la fermeture.
+    setInterval(() => { if (!['downloading', 'ready'].includes(updater.state.state)) updater.check({ silent: true }); }, 30 * 60 * 1000);
   });
 });
 
