@@ -107,3 +107,11 @@ test('Ollama : envoie think:false et réessaie sans si le modèle le refuse', as
   assert.equal(bodies[0].think, false);
   assert.equal('think' in bodies[1], false);
 });
+
+test('ollama : modèle « réflexion » qui ne renvoie que son raisonnement → relance puis repli, jamais vide', async () => {
+  let calls = 0;
+  const fetchImpl = async (url, opts) => { calls++; const b = JSON.parse(opts.body); return { ok: true, status: 200, json: async () => ({ message: { content: '', thinking: calls === 1 ? 'je réfléchis' : (b.messages[0].content.startsWith('/no_think') ? 'OK lu sur l’image' : '') } }), text: async () => '' }; };
+  const out = await analyze({ provider: 'ollama', model: 'qwen3-vl:4b', mode: 'discussion', question: 'q', images: ['a'], fetchImpl });
+  assert.equal(out, 'OK lu sur l’image');
+  assert.equal(calls, 2);
+});

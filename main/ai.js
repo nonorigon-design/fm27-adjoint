@@ -96,9 +96,17 @@ async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxToke
     if (!(e.kind === 'server' && /HTTP 400|think/i.test(e.message))) throw e; // ancienne version d'Ollama ou modèle sans option « think »
     res = await ollamaFetch('/api/chat', { signal, fetchImpl, body });
   }
-  const data = await res.json();
-  const text = String(data?.message?.content || '').trim();
-  if (!text) throw new AiError('empty', 'Le modèle local n’a renvoyé aucun texte. Essaie un autre modèle avec vision.');
+  let data = await res.json();
+  let text = String(data?.message?.content || '').trim();
+  // Modèles « réflexion » (qwen3-vl) : avec une version d'Ollama qui ignore think:false, tout part dans le raisonnement.
+  // On relance une fois avec /no_think et plus de place, puis on se rabat sur le raisonnement s'il est la seule sortie.
+  if (!text) {
+    const retry = { ...body, options: { ...body.options, num_predict: Math.max(1500, (maxTokens || 0) * 3) }, messages: [{ role: 'user', content: '/no_think\n' + prompt, images }] };
+    try { const r2 = await ollamaFetch('/api/chat', { signal, fetchImpl, body: { ...retry, think: false } }); data = await r2.json(); text = String(data?.message?.content || '').trim(); }
+    catch (e) { if (e?.kind === 'cancelled') throw e; }
+    if (!text) text = String(data?.message?.thinking || '').replace(/<\/?think>/g, '').trim();
+  }
+  if (!text) throw new AiError('empty', 'Le modèle local n’a renvoyé aucun texte. Mets Ollama à jour (ollama.com/download) ou choisis un autre modèle avec vision.');
   return text;
 }
 

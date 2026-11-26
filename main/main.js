@@ -220,7 +220,12 @@ function registerIpc() {
     setupAbort = new AbortController();
     try {
       const r = await setupLocalEngine({ ollama, hardware, signal: setupAbort.signal, tmpDir: app.getPath('temp'), onStep: (st) => send('engine:step', st),
-        selfTest: (tag) => analyze({ provider: 'ollama', model: tag, mode: 'discussion', question: 'Réponds uniquement par le mot OK.', images: [makeSelfTestImage()], maxTokens: 300 }) });
+        selfTest: async (tag) => {
+          // Le modèle est installé : on le garde même si l'essai échoue, pour ne jamais bloquer l'adjoint.
+          settings = { ...settings, provider: 'ollama', ollamaModel: tag }; saveSettings();
+          try { await analyze({ provider: 'ollama', model: tag, mode: 'discussion', question: 'Réponds uniquement par le mot OK.', images: [makeSelfTestImage()], maxTokens: 300 }); }
+          catch (e) { if (e?.kind === 'cancelled') throw e; logger.warn('Auto-test du modèle : ' + e.message); }
+        } });
       settings = { ...settings, provider: 'ollama', ollamaModel: r.model, setupDone: true }; saveSettings();
       return { ...r, settings };
     } finally { setupAbort = null; }

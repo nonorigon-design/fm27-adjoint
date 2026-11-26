@@ -541,6 +541,12 @@
     if (state.settings.provider !== 'ollama') return;
     const st = await call(A.ollama.status()).catch(() => null);
     if (!st) return;
+    // Un modèle de vision déjà téléchargé est choisi tout seul : plus de « Modèle indisponible » pour rien.
+    if (st.installed && !state.settings.ollamaModel) {
+      const names = st.models.map((m) => m.name);
+      const pick = names.find((n) => /qwen3-vl/i.test(n)) || names.find((n) => /vl|vision|llava|gemma3|minicpm/i.test(n));
+      if (pick) { state.settings = await call(A.settings.set({ ollamaModel: pick })); renderEngine(); toast('Modèle local sélectionné : ' + pick); }
+    }
     const ready = st.installed && st.models.length > 0 && state.settings.ollamaModel;
     if (ready) { if (!st.running) call(A.ollama.start()).catch(() => {}); return; }
     openWizard(true);
