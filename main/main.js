@@ -23,7 +23,7 @@ const { setupLocalEngine } = require('./engine-setup');
 const { LiveCoach } = require('./live');
 const { buildLivePrompt } = require('./prompts');
 
-const DEFAULTS = { provider: 'ollama', geminiModel: '', ollamaModel: '', shortcut: 'Control+Alt+A', career: 'Ma carrière', bounds: null, section: 'direct', setupDone: false, liveCloud: false };
+const DEFAULTS = { provider: 'ollama', geminiModel: '', ollamaModel: '', shortcut: 'Control+Alt+A', career: 'Ma carrière', bounds: null, section: 'direct', setupDone: false, liveCloud: false, clubs: {} };
 const ALLOWED_HOSTS = new Set(['ollama.com', 'aistudio.google.com', 'ai.google.dev', 'github.com', 'console.cloud.google.com']);
 
 // Données isolées pour les tests automatisés (jamais utilisé en usage normal).
@@ -49,6 +49,7 @@ const settingsFile = () => path.join(dataDir(), 'settings.json');
 
 function loadSettings() {
   try { settings = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; } catch { settings = { ...DEFAULTS }; }
+  settings.provider = 'ollama'; // Gemini retiré : l'adjoint fonctionne uniquement avec l'IA locale et gratuite.
 }
 function saveSettings() {
   const tmp = settingsFile() + '.tmp';
@@ -172,11 +173,22 @@ function registerIpc() {
   handle('settings:get', () => settings);
   handle('settings:set', (patch) => {
     const next = { ...settings };
-    if (['ollama', 'gemini'].includes(patch.provider)) next.provider = patch.provider;
+    if (patch.provider === 'ollama') next.provider = 'ollama';
     for (const k of ['geminiModel', 'ollamaModel']) if (typeof patch[k] === 'string' && /^[A-Za-z0-9_.:\-\/]{0,80}$/.test(patch[k])) next[k] = patch[k];
     if (typeof patch.career === 'string') next.career = sanitizeCareer(patch.career);
     if (typeof patch.section === 'string' && MODES[patch.section]) next.section = patch.section;
     for (const k of ['setupDone', 'liveCloud']) if (typeof patch[k] === 'boolean') next[k] = patch[k];
+    // Couleurs par club : { "Nom de carrière": { primary: "#rrggbb", secondary: "#rrggbb", auto: true } }
+    if (patch.clubs && typeof patch.clubs === 'object') {
+      const hex = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null);
+      const out = {};
+      for (const [name, c] of Object.entries(patch.clubs).slice(0, 200)) {
+        if (!c || typeof c !== 'object') continue;
+        const key = sanitizeCareer(name); const pr = hex(c.primary), se = hex(c.secondary);
+        if (key && pr) out[key] = { primary: pr, secondary: se || '#ffffff', auto: c.auto !== false };
+      }
+      next.clubs = out;
+    }
     if (typeof patch.shortcut === 'string' && patch.shortcut !== settings.shortcut) { registerShortcut(patch.shortcut); next.shortcut = patch.shortcut; }
     settings = next; saveSettings(); return settings;
   });
@@ -349,7 +361,6 @@ async function runSmoke() {
       await win.webContents.executeJavaScript(`document.getElementById('report').replaceChildren(Markdown.render(document, ${JSON.stringify('## Faits lus\n- **Formation** : 4-2-3-1 (Capture A)\n- **Milieu axial gauche** : rôle lu à l\u2019écran\n\n## Incertain ou illisible\n- Les consignes sans ballon ne sont pas visibles.\n\n## Diagnostic et hypothèses\nHypothèse : le milieu manque de soutien (à vérifier sur plusieurs matchs).\n\n## Corrections\n1. **Problème observé** : peu de couverture dans le couloir.\n2. **Éléments** : voir Capture A.\n3. **Changement conseillé** : demander à l\u2019ailier de rester plus bas.\n\n## Écrans à fournir ensuite\n- Page des consignes avec ballon.')}))`);
       await snap('report.png');
       await win.webContents.executeJavaScript(`document.getElementById('engine-pill').click()`); await new Promise((r) => setTimeout(r, 2500)); await snap('settings-local.png');
-      await win.webContents.executeJavaScript(`document.querySelectorAll('.seg button')[1].click()`); await new Promise((r) => setTimeout(r, 1500)); await snap('settings-gemini.png');
     }
     if (process.env.FM27_SMOKE_PNG) fs.writeFileSync(process.env.FM27_SMOKE_PNG, (await win.webContents.capturePage()).toPNG());
   } catch (e) { out.error = String(e); }

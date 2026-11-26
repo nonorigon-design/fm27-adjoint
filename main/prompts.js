@@ -53,6 +53,11 @@ const MODES = {
     instruction: "Évalue les recrues à partir des attributs visibles par rapport aux besoins de mon équipe (rôles, âge de l'effectif, niveau). Signale les attributs masqués ou les fourchettes d'observation insuffisantes.",
     placeholder: "Ce joueur correspond-il à mes besoins ? Compare-le à mon effectif.",
   },
+  entrainement: {
+    label: 'Entraînement',
+    instruction: "Analyse le programme d'entraînement, l'intensité, les entraînements individuels et la forme visibles (progrès, déclins, blessures, fatigue). Propose des ajustements concrets liés à la tactique et au calendrier, sans inventer d'intitulés de séances absents de l'écran.",
+    placeholder: "Mon programme d'entraînement est-il adapté à ma tactique et à mon calendrier ?",
+  },
   discussion: {
     label: 'Discussion',
     instruction: "Réponds à la question comme un adjoint expérimenté. Si une capture est jointe, appuie-toi uniquement sur ce qui y est lisible.",

@@ -171,3 +171,46 @@ code{background:var(--paper);padding:1px 5px;border-radius:5px;font-size:13px}
 .wiz-steps li.active{color:var(--ink);font-weight:600}.wiz-steps li.active i{background:var(--green);color:#fff}
 .wiz-steps li.done{color:var(--green-d)}.wiz-steps li.done i{background:var(--green-l)}
 .wiz-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+
+/* ---- Barre de menu façon Football Manager, aux couleurs du club ---- */
+:root{--club:#0b1b2e;--club-d:#07121f;--club-ink:#ffffff;--club-2:#1fa971}
+.app.fm{display:flex;flex-direction:column;height:100vh;grid-template-columns:none}
+.fmbar{background:var(--club);color:var(--club-ink);box-shadow:0 2px 0 rgba(0,0,0,.15);position:relative;z-index:5;transition:background .3s}
+.fmbar-row{display:flex;align-items:stretch;gap:6px;padding:0 14px;min-height:52px}
+.crest{align-self:center;width:38px;height:38px;border-radius:9px 9px 14px 14px;border:2px solid var(--club-ink);background:var(--club-d);color:var(--club-ink);font-weight:800;font-size:13px;letter-spacing:.02em;cursor:pointer;display:grid;place-items:center;margin-right:10px;padding:0}
+.crest span{max-width:32px;overflow:hidden}
+#nav.fmnav{display:flex;flex-direction:row;gap:0;align-items:stretch;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.fmnav::-webkit-scrollbar{display:none}
+#nav.fmnav button{border-radius:0;box-shadow:none;background:none;border:0;color:var(--club-ink);opacity:.82;font-weight:700;font-size:14px;letter-spacing:.06em;text-transform:uppercase;padding:0 14px;cursor:pointer;white-space:nowrap;position:relative;display:flex;align-items:center;gap:6px}
+#nav.fmnav button:hover{opacity:1;background:rgba(255,255,255,.08)}
+#nav.fmnav button[aria-current=page]{opacity:1;background:rgba(0,0,0,.14);box-shadow:none;color:var(--club-ink)}
+#nav.fmnav button[aria-current=page]::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--club-ink)}
+#nav.fmnav button .chev{font-size:10px;opacity:.7}
+.fmbar-right{display:flex;align-items:center;gap:10px;margin-left:auto;padding-left:10px}
+.fmbtn{background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.22);color:var(--club-ink);border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.fmbtn:hover{background:rgba(0,0,0,.28)}
+.fmbtn[aria-current=page]{background:var(--club-ink);color:var(--club)}
+.club-pick{display:flex;flex-direction:column;gap:2px}
+.club-pick .lbl{color:var(--club-ink);opacity:.7;padding:0}
+.club-pick input{background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.25);color:var(--club-ink);border-radius:7px;padding:5px 9px;width:190px}
+.club-pick input::placeholder{color:var(--club-ink);opacity:.55}
+.club-pick input:focus{outline:2px solid var(--club-ink);outline-offset:0}
+.fmsub{background:var(--club-d);display:flex;gap:4px;padding:0 14px 0 66px;min-height:32px;align-items:stretch;overflow-x:auto}
+.fmsub:empty{min-height:6px}
+.fmsub button{background:none;border:0;color:var(--club-ink);opacity:.72;padding:0 10px;font-size:13px;cursor:pointer;white-space:nowrap}
+.fmsub button:hover{opacity:1}
+.fmsub button[aria-current=page]{opacity:1;box-shadow:inset 0 -2px 0 var(--club-ink)}
+.app.fm .main{flex:1}
+.app.fm .side-foot{flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 10px;border:0;padding:0 0 10px;margin-top:-6px}
+.app.fm .side-link{color:var(--ink-2);padding:4px 6px;font-size:12px}
+.app.fm .side-link:hover{background:var(--line);color:var(--ink)}
+.app.fm .ver{color:var(--ink-3);margin-left:auto}
+.btn.primary{background:var(--club);border-color:var(--club);color:var(--club-ink)}
+.btn.primary:hover{filter:brightness(.9);background:var(--club)}
+.club-swatches{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.club-swatches label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-3)}
+.club-swatches input[type=color]{width:64px;height:38px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff;cursor:pointer}
+.club-preview{height:40px;border-radius:9px;display:flex;align-items:center;padding:0 14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+@media (max-width:900px){.club-pick .lbl{display:none}.club-pick input{width:130px}.fmsub{padding-left:14px}}
+
+.switch input:checked+span{background:var(--club)!important}

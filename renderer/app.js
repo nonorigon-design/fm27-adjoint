@@ -2,7 +2,17 @@
 (() => {
   const A = window.adjoint;
   const $ = (id) => document.getElementById(id);
-  const SECTIONS = [['direct', '◉'], ['tactique', 'T'], ['joueurs', 'J'], ['avantmatch', 'A'], ['debrief', 'D'], ['recrutement', 'R'], ['discussion', 'C']];
+  // Menu façon Football Manager : chaque entrée regroupe une ou plusieurs sections de l'adjoint.
+  const MENU = [
+    { id: 'portail', label: 'Portail', items: [['direct', 'Coach en direct']] },
+    { id: 'effectif', label: 'Effectif', items: [['joueurs', 'Joueurs et rôles']] },
+    { id: 'tactiques', label: 'Tactiques', items: [['tactique', 'Vue d’ensemble']] },
+    { id: 'match', label: 'Match', items: [['avantmatch', 'Avant-match'], ['debrief', 'Débrief']] },
+    { id: 'recrutement', label: 'Recrutement', items: [['recrutement', 'Évaluer une recrue']] },
+    { id: 'entrainement', label: 'Entraînement', items: [['entrainement', 'Programme et forme']] },
+    { id: 'club', label: 'Club', items: [] },
+  ];
+  const menuOf = (section) => MENU.find((m) => m.items.some(([id]) => id === section));
   const TITLES = {
     direct: ['Ton adjoint, en direct.', 'Il observe Football Manager et te conseille au fil des écrans, sans que tu ajoutes de captures.'],
     tactique: ['Trouve ton équilibre.', 'Formation, rôles et consignes avec et sans ballon, lus sur tes captures.'],
@@ -10,6 +20,7 @@
     avantmatch: ['Prépare le prochain rendez-vous.', 'Effectif, adversaire et ajustements à partir de ce qui est visible.'],
     debrief: ['Comprends ce qui s’est joué.', 'Tirs, statistiques et contexte — sans conclure sur un seul match.'],
     recrutement: ['Renforce ce qui compte.', 'Évalue une recrue selon les besoins réels de ton équipe.'],
+    entrainement: ['Prépare la semaine.', 'Programme, intensité, entraînements individuels et forme des joueurs.'],
     discussion: ['Parlons football.', 'Pose une question, avec ou sans capture. Le contexte de la carrière est conservé.'],
   };
   const KIND_TITLES = { invalid_key: 'Clé Gemini invalide', forbidden: 'Accès refusé', quota: 'Quota atteint', model_missing: 'Modèle indisponible', model_incompatible: 'Modèle incompatible avec les images', connection: 'Problème de connexion', ollama_down: 'Moteur local injoignable', memory: 'Mémoire insuffisante', empty: 'Réponse vide', server: 'Service indisponible' };
@@ -40,11 +51,19 @@
   // ---------- navigation (les brouillons sont conservés par section) ----------
   function renderNav() {
     const nav = $('nav'); nav.replaceChildren();
-    for (const [id, letter] of SECTIONS) {
-      nav.append(el('button', { 'aria-current': id === state.section ? 'page' : null, onclick: () => selectSection(id) }, el('i', { text: letter }), state.info.modes[id].label));
+    const cur = menuOf(state.section);
+    for (const m of MENU) {
+      const first = m.items[0] && m.items[0][0];
+      if (first && !state.info.modes[first]) continue;
+      nav.append(el('button', { 'aria-current': (m === cur && state.drawer !== 'club') || (m.id === 'club' && state.drawer === 'club') ? 'page' : null,
+        onclick: () => (m.id === 'club' ? openClub() : selectSection(first)) }, m.label, m.items.length > 1 ? el('span', { class: 'chev', text: '▾' }) : null));
     }
+    const sub = $('fmsub'); sub.replaceChildren();
+    if (cur && state.drawer !== 'club') for (const [id, label] of cur.items) if (state.info.modes[id]) sub.append(el('button', { 'aria-current': id === state.section ? 'page' : null, onclick: () => selectSection(id) }, label));
+    $('btn-messages').setAttribute('aria-current', state.section === 'discussion' ? 'page' : 'false');
   }
   function selectSection(id) {
+    if (state.drawer === 'club') closeDrawer();
     state.drafts[state.section] = $('question').value;
     state.section = id;
     A.settings.set({ section: id });
@@ -74,7 +93,7 @@
   }
   function openLightbox(im) { $('lightbox').querySelector('img').src = im.thumb; $('lightbox').hidden = false; }
   async function addCapture(promise) {
-    try { const im = await call(promise); for (const x of [].concat(im)) state.images.push(x); renderThumbs(); }
+    try { const im = await call(promise); for (const x of [].concat(im)) state.images.push(x); renderThumbs(); const f = [].concat(im).find((x) => /football|fm/i.test(x.label || '')) ; if (f) learnClubFrom(f.thumb); }
     catch (e) { toast(e.message, true); }
   }
   async function refreshWindows() {
@@ -136,17 +155,14 @@
 
   // ---------- panneau latéral ----------
   function openDrawer(nodes) { $('drawer-body').replaceChildren(...nodes); $('drawer').hidden = false; $('drawer-close').focus(); }
-  function closeDrawer() { $('drawer').hidden = true; state.drawer = null; }
+  function closeDrawer() { $('drawer').hidden = true; const wasClub = state.drawer === 'club'; state.drawer = null; if (wasClub && state.info) renderNav(); }
 
   async function openSettings(tab) {
     state.drawer = 'settings';
     const s = state.settings, body = [];
     body.push(el('h2', { text: 'Réglages IA et application' }));
-    const seg = el('div', { class: 'seg' },
-      el('button', { 'aria-pressed': String(s.provider === 'ollama'), text: 'Moteur local (Ollama)', onclick: () => switchProvider('ollama') }),
-      el('button', { 'aria-pressed': String(s.provider === 'gemini'), text: 'Gemini en ligne', onclick: () => switchProvider('gemini') }));
-    body.push(seg);
-    body.push(s.provider === 'ollama' ? await localPanel() : await geminiPanel());
+    body.push(el('p', { class: 'hint', text: 'L’adjoint utilise uniquement l’IA locale (Ollama) : gratuite, sans compte, et rien ne quitte ton PC.' }));
+    body.push(await localPanel());
     body.push(el('h3', { text: 'Raccourci clavier global' }), shortcutPanel());
     body.push(el('h3', { text: 'Mises à jour' }), updatePanel());
     body.push(el('h3', { text: 'Diagnostic' }), el('div', { class: 'panel' },
@@ -293,12 +309,119 @@
     openDrawer(body);
   }
 
+
+  // ---------- couleurs du club ----------
+  const DEFAULT_CLUB = { primary: '#0b1b2e', secondary: '#ffffff', auto: true };
+  const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const rgbToHex = (r, g, b) => '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+  const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  function clubOf(name) { return (state.settings.clubs || {})[name] || null; }
+  function initials(name) {
+    const w = String(name).replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter((x) => x && !/^(fc|cf|ud|cd|ac|as|sc|rc|club|de|del|la|le|les|of|the|real)$/i.test(x));
+    const base = w.length ? w : String(name).split(/\s+/);
+    return (base.length > 1 ? base[0][0] + base[1][0] : (base[0] || 'FM').slice(0, 3)).toUpperCase();
+  }
+  function applyClub() {
+    const name = careerName(); const c = clubOf(name) || DEFAULT_CLUB;
+    const p = hexToRgb(c.primary); const s2 = hexToRgb(c.secondary || '#ffffff');
+    // Texte de la barre : la couleur secondaire si elle est lisible, sinon blanc ou noir.
+    const ink = contrast(p, s2) >= 3 ? c.secondary : (contrast(p, [255, 255, 255]) >= contrast(p, [0, 0, 0]) ? '#ffffff' : '#111111');
+    const d = rgbToHex(...p.map((v) => v * 0.72));
+    const r = document.documentElement.style;
+    r.setProperty('--club', c.primary); r.setProperty('--club-d', d); r.setProperty('--club-ink', ink);
+    $('crest-txt').textContent = initials(name);
+  }
+  async function saveClub(name, patch) {
+    const clubs = { ...(state.settings.clubs || {}) };
+    clubs[name] = { ...(clubs[name] || DEFAULT_CLUB), ...patch };
+    state.settings = await call(A.settings.set({ clubs }));
+    applyClub();
+  }
+  // FM peint sa barre de menu aux couleurs du club entraîné : on lit cette bande en haut de la capture.
+  function sampleClubColors(src) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const W = 120, H = Math.max(1, Math.round(img.height * W / img.width));
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        const g = cv.getContext('2d'); g.drawImage(img, 0, 0, W, H);
+        const band = g.getImageData(0, Math.round(H * 0.005), W, Math.max(2, Math.round(H * 0.045))).data;
+        const buckets = new Map();
+        for (let i = 0; i < band.length; i += 4) {
+          const k = [band[i] >> 4, band[i + 1] >> 4, band[i + 2] >> 4].join(',');
+          const b = buckets.get(k) || { n: 0, r: 0, g: 0, b: 0 }; b.n++; b.r += band[i]; b.g += band[i + 1]; b.b += band[i + 2]; buckets.set(k, b);
+        }
+        const sorted = [...buckets.values()].sort((x, y) => y.n - x.n);
+        const top = sorted[0]; if (!top || top.n < band.length / 4 * 0.3) return resolve(null);
+        const prim = [top.r / top.n, top.g / top.n, top.b / top.n];
+        const sat = Math.max(...prim) - Math.min(...prim);
+        if (sat < 18 && lum(prim) < 0.04) return resolve(null); // fond sombre neutre : pas une couleur de club
+        let sec = null;
+        for (const b of sorted.slice(1)) { const c = [b.r / b.n, b.g / b.n, b.b / b.n]; if (b.n > band.length / 4 * 0.02 && contrast(prim, c) >= 2.5) { sec = c; break; } }
+        resolve({ primary: rgbToHex(...prim), secondary: sec ? rgbToHex(...sec) : (lum(prim) > 0.4 ? '#111111' : '#ffffff') });
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+  async function learnClubFrom(src, force) {
+    const name = careerName(); const cur = clubOf(name);
+    if (!force && cur && cur.auto === false) return null;
+    const c = await sampleClubColors(src); if (!c) return null;
+    if (cur && cur.primary === c.primary && !force) return c;
+    await saveClub(name, { ...c, auto: cur ? cur.auto !== false : true });
+    return c;
+  }
+  async function openClub() {
+    state.drawer = 'club'; renderNav();
+    const name = careerName(); const c = clubOf(name) || DEFAULT_CLUB;
+    const prim = el('input', { type: 'color', value: c.primary, 'aria-label': 'Couleur principale' });
+    const sec = el('input', { type: 'color', value: c.secondary || '#ffffff', 'aria-label': 'Couleur secondaire' });
+    const preview = el('div', { class: 'club-preview', text: name });
+    const paint = () => { preview.style.background = prim.value; preview.style.color = sec.value; };
+    paint();
+    const autoBox = el('input', { type: 'checkbox', checked: c.auto !== false });
+    const msg = el('p', { class: 'hint' });
+    prim.oninput = paint; sec.oninput = paint;
+    const body = [
+      el('h2', { text: 'Club' }),
+      el('div', { class: 'panel' },
+        el('p', { class: 'hint', text: 'L’adjoint marche avec n’importe quel club. Chaque club (ou carrière) garde sa propre mémoire et ses propres couleurs. Change de club avec le champ « Club / carrière » en haut à droite.' }),
+        preview,
+        el('div', { class: 'club-swatches' }, el('label', {}, 'Principale', prim), el('label', {}, 'Secondaire', sec)),
+        el('div', { class: 'row' },
+          el('button', { class: 'btn primary', text: 'Enregistrer les couleurs', onclick: async () => { await saveClub(name, { primary: prim.value, secondary: sec.value, auto: autoBox.checked }); toast('Couleurs du club enregistrées.'); } }),
+          el('button', { class: 'btn', text: 'Lire les couleurs dans FM', onclick: async (ev) => {
+            ev.target.disabled = true; msg.textContent = 'Capture de Football Manager…';
+            try {
+              const im = await call(A.capture.fm()); const one = [].concat(im)[0];
+              state.images.push(...[].concat(im)); renderThumbs();
+              const got = one && await learnClubFrom(one.thumb, true);
+              msg.textContent = got ? 'Couleurs lues dans la barre de menu de FM.' : 'Couleurs introuvables : ouvre un écran de FM avec la barre du club en haut, puis réessaie.';
+              if (got) { prim.value = got.primary; sec.value = got.secondary; paint(); }
+            } catch (e) { msg.textContent = e.message; }
+            ev.target.disabled = false;
+          } })),
+        el('label', { class: 'switch' }, autoBox, el('span'), ' Mettre à jour les couleurs automatiquement à chaque capture de FM'),
+        msg),
+      el('h3', { text: 'Mémoire de ce club' }),
+      el('div', { class: 'panel' },
+        el('p', { class: 'hint', text: 'Rapports, conversations et changements tactiques testés sont rangés par club.' }),
+        el('button', { class: 'btn', text: 'Historique et changements testés', onclick: () => openHistory() }),
+        el('button', { class: 'btn ghost', text: 'Réglages IA et application', onclick: () => openSettings() })),
+    ];
+    autoBox.onchange = () => saveClub(name, { auto: autoBox.checked });
+    openDrawer(body);
+  }
+
   // ---------- démarrage ----------
   async function init() {
     state.info = await call(A.info());
     state.settings = await call(A.settings.get());
     $('ver').textContent = state.info.version;
-    $('career').value = state.settings.career;
+    $('career').value = state.settings.career === 'Ma carrière' ? '' : state.settings.career;
+    applyClub();
     const careers = await call(A.history.careers());
     $('careers').replaceChildren(...careers.map((c) => el('option', { value: c })));
     $('shortcut-hint').textContent = state.settings.shortcut ? 'Raccourci : ' + state.settings.shortcut.replace('Control', 'Ctrl') : '';
@@ -362,7 +485,7 @@
       const wantOn = !state.live.on;
       if (wantOn) { // vérifie qu'un moteur est prêt avant de démarrer
         const model = state.settings.provider === 'ollama' ? state.settings.ollamaModel : state.settings.geminiModel;
-        if (!model) { toast('Aucune IA prête : installe l’IA gratuite ou configure Gemini.', true); return state.settings.provider === 'ollama' ? openWizard() : openSettings(); }
+        if (!model) { toast('Aucune IA prête : choisis ou télécharge un modèle de vision dans les réglages.', true); return state.settings.provider === 'ollama' ? openWizard() : openSettings(); }
       }
       state.live.on = await call(A.live.set(wantOn)); renderLive();
     } catch (e) { toast(e.message, true); }
@@ -371,7 +494,7 @@
     if (ev.type === 'state') {
       state.live.on = ev.on; renderLive();
       if (!ev.on && ev.reason) toast(ev.reason === 'quota' ? 'Coach arrêté : quota Gemini atteint.' : ev.reason === 'errors' ? 'Coach arrêté après plusieurs erreurs : vérifie le moteur IA.' : 'Coach arrêté : ' + ev.reason, true);
-    } else if (ev.type === 'item') feedAdd(ev);
+    } else if (ev.type === 'item') { if (ev.state === 'analyzing' && ev.thumb) learnClubFrom(ev.thumb); feedAdd(ev); }
     else if (ev.type === 'notice') { if (ev.message !== state.lastNotice) { state.lastNotice = ev.message; toast(ev.message, true); } }
   }
 
@@ -392,7 +515,7 @@
       el('p', { text: `L’IA tourne sur ton PC : gratuite, sans clé, sans quota, et rien n’est envoyé en ligne. Elle sera lancée automatiquement avec l’adjoint.` }),
       el('p', { class: 'hint', text: hw ? `${hw.ramGb} Go de RAM${hw.vramGb ? ' · ' + hw.vramGb + ' Go de mémoire vidéo' : ''}. ${hw.reason}` : 'Détection du matériel impossible.' }),
       el('p', { class: 'hint', text: `Téléchargements : le moteur Ollama (installateur de plusieurs centaines de Mo) puis le modèle ${hw?.model ? hw.model.tag : ''} (${size}). Prévois quelques minutes ; en cas d’interruption, relancer reprend le téléchargement.` }),
-      steps, bar, txt, el('div', { class: 'wiz-actions' }, cancel, later, gem, go));
+      steps, bar, txt, el('div', { class: 'wiz-actions' }, cancel, later, go));
     if (!hw?.model) { go.disabled = true; return; }
     const mark = (id, mode) => { let seen = false; for (const li of steps.children) { if (li.dataset.step === id) { seen = true; li.className = mode; li.firstChild.textContent = mode === 'done' ? '✓' : '·'; } else if (!seen && mode === 'active') { li.className = 'done'; li.firstChild.textContent = '✓'; } } };
     go.onclick = async () => {
@@ -446,14 +569,16 @@
   $('drawer').addEventListener('click', (e) => { if (e.target === $('drawer')) closeDrawer(); });
   $('lightbox').onclick = () => { $('lightbox').hidden = true; };
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('lightbox').hidden = true; if (!$('drawer').hidden) closeDrawer(); } });
-  $('career').addEventListener('change', async () => { state.settings = await call(A.settings.set({ career: careerName() })); state.lastReport = null; renderThread(); showReportFor(state.section); });
+  $('career').addEventListener('change', async () => { state.settings = await call(A.settings.set({ career: careerName() })); state.lastReport = null; applyClub(); renderThread(); showReportFor(state.section); if (state.drawer === 'club') openClub(); });
+  $('crest').onclick = () => openClub();
+  $('btn-messages').onclick = () => selectSection('discussion');
   $('copy').onclick = async () => { if (!state.lastReport) return; await navigator.clipboard.writeText(state.lastReport.answer); toast('Rapport copié.'); };
   $('export').onclick = async () => { if (state.lastReport) await A.exportReport(state.lastReport.answer, careerName()); };
   $('watch').onchange = async (e) => { await A.watch.set(e.target.checked); toast(e.target.checked ? 'Surveillance activée : aucune donnée n’est envoyée automatiquement.' : 'Surveillance désactivée.'); if (!e.target.checked) $('watch-toast').hidden = true; };
   $('watch-add').onclick = async () => { await addCapture(A.watch.adopt()); $('watch-toast').hidden = true; };
   $('watch-dismiss').onclick = () => { $('watch-toast').hidden = true; };
 
-  A.capture.onAdded((im) => { state.images.push(im); renderThumbs(); toast('Capture ajoutée par raccourci.'); });
+  A.capture.onAdded((im) => { state.images.push(im); renderThumbs(); learnClubFrom(im.thumb); toast('Capture ajoutée par raccourci.'); });
   A.capture.onError((e) => toast(e.message, true));
   A.watch.onChange((w) => {
     if (w.error) { if (w.error !== state.lastWatch) { toast(w.error, true); state.lastWatch = w.error; } return; }

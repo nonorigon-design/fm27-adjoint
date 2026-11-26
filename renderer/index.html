@@ -8,21 +8,29 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="app">
-  <aside class="side">
-    <div class="brand"><span class="logo">A<small>/27</small></span><div><b>ADJOINT</b><span>Espace du coach</span></div></div>
-    <nav id="nav" aria-label="Sections"></nav>
-    <div class="side-foot">
-      <label class="lbl" for="career">Ma carrière</label>
-      <input id="career" list="careers" maxlength="80" autocomplete="off">
-      <datalist id="careers"></datalist>
-      <button class="side-link" id="btn-history">Historique et changements testés</button>
-      <button class="side-link" id="btn-settings">Réglages IA et application</button>
-      <div class="ver">Version <span id="ver">—</span></div>
+<div class="app fm">
+  <header class="fmbar" id="fmbar">
+    <div class="fmbar-row">
+      <button class="crest" id="crest" title="Club : couleurs et carrière" aria-label="Ouvrir la page Club"><span id="crest-txt">FM</span></button>
+      <nav id="nav" class="fmnav" aria-label="Menu principal"></nav>
+      <div class="fmbar-right">
+        <button class="fmbtn" id="btn-messages">Messages</button>
+        <div class="club-pick">
+          <label class="lbl" for="career">Club / carrière</label>
+          <input id="career" list="careers" maxlength="80" autocomplete="off" placeholder="Nom de ton club">
+          <datalist id="careers"></datalist>
+        </div>
+      </div>
     </div>
-  </aside>
+    <div class="fmsub" id="fmsub"></div>
+  </header>
 
   <main class="main">
+    <div class="side-foot">
+      <button class="side-link" id="btn-history">Historique et changements testés</button>
+      <button class="side-link" id="btn-settings">Réglages IA et application</button>
+      <span class="ver">Version <span id="ver">—</span></span>
+    </div>
     <header class="top">
       <div><h1 id="title"></h1><p id="subtitle"></p></div>
       <div class="top-right">

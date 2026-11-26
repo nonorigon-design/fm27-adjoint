@@ -20,6 +20,12 @@ L'application vérifie GitHub au démarrage (bouton **Réglages IA et applicatio
 
 > Si tu utilisais l'ancienne version (Python, `DEMARRER.bat`) : son lanceur est redirigé automatiquement vers cet installateur dès la publication de la première version (voir « Migration »).
 
+## Menu et couleurs du club (2.2.0)
+
+- Barre de menu inspirée de Football Manager : **Portail** (coach en direct), **Effectif**, **Tactiques**, **Match** (avant-match, débrief), **Recrutement**, **Entraînement**, **Club**, et **Messages** pour discuter avec l'adjoint.
+- Fonctionne avec **n'importe quel club** : tape le nom du club dans « Club / carrière ». Chaque club garde sa mémoire.
+- **Couleurs du club automatiques** : à chaque capture de FM, l'adjoint lit la couleur de la barre de menu du jeu et prend les couleurs du club. Réglables à la main dans **Club**.
+
 ## Utilisation
 
 1. **Capturer** : bouton *Capturer Football Manager*, raccourci global (par défaut `Ctrl+Alt+A`, modifiable), ou *Importer…* pour tes propres images. Jusqu'à 6 captures (A à F), consultables en grand d'un clic.
@@ -34,6 +40,8 @@ Laisse FM en grand sur l'écran principal et l'adjoint sur le second. La capture
 Optionnelle. Elle repère qu'un nouvel écran stable est apparu et te propose de l'ajouter. **Elle n'envoie jamais rien** : seule la capture que tu ajoutes puis analyses est transmise au moteur choisi.
 
 ## Moteur IA
+
+> Depuis la version 2.2.0, l'adjoint utilise **uniquement le moteur local (Ollama)** : gratuit, sans compte et 100 % privé. Gemini a été retiré de l'interface.
 
 | | Moteur local (Ollama) | Gemini (en ligne) |
 |---|---|---|
