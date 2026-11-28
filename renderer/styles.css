@@ -256,3 +256,124 @@ code{background:var(--paper);padding:1px 5px;border-radius:5px;font-size:13px}
 .dossier summary span{font-weight:400;color:var(--ink-3);font-size:12px}
 .dossier dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:8px 0 2px;font-size:12.5px}
 .dossier dt{color:var(--ink-3)}.dossier dd{margin:0}
+
+/* =========================================================================
+   Thème « vestiaire » 2.6 : sombre, net, direct — dans l'esprit de FM.
+   Surcharges uniquement : les composants gardent leur structure.
+   ========================================================================= */
+:root{
+  --paper:#0e141b;--card:#151c25;--line:#243142;--panel-2:#1b2430;
+  --ink:#e9eef4;--ink-2:#aab7c5;--ink-3:#738396;
+  --navy-500:#8ea2b7;--navy-800:#0b1118;
+  --green:#2fbf7f;--green-d:#5fd8a0;--green-l:rgba(47,191,127,.14);
+  --amber:#f0b44c;--amber-l:rgba(240,180,76,.13);--red:#ff6b5e;--red-l:rgba(255,107,94,.12);--blue-l:rgba(110,160,230,.12);
+  --r:8px;--sh:none;
+  font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;color:var(--ink);
+  color-scheme:dark;
+}
+html,body{background:var(--paper)}
+::selection{background:var(--club);color:var(--club-ink)}
+*::-webkit-scrollbar{width:10px;height:10px}*::-webkit-scrollbar-thumb{background:#2a3748;border-radius:10px;border:2px solid var(--paper)}*::-webkit-scrollbar-track{background:transparent}
+.tabular,.when,.count,.dossier dd{font-variant-numeric:tabular-nums}
+
+/* Barre de menu : plus nette, liseré sombre sous la couleur du club */
+.fmbar{box-shadow:none;border-bottom:1px solid rgba(0,0,0,.35)}
+.fmbar-row{min-height:48px}
+#nav.fmnav button{font-size:13px;letter-spacing:.08em;padding:0 13px}
+.fmsub{min-height:30px;border-bottom:1px solid var(--line)}
+.fmsub:empty{min-height:0;border:0}
+.app.fm .side-foot{display:none}
+
+/* Zone principale : moins de texte, plus d'espace utile */
+.main{padding:18px 24px 24px}
+.top{margin-bottom:14px;align-items:center}
+h1{font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;font-size:20px;font-weight:700;letter-spacing:0}
+.top p{font-size:13px;margin-top:2px}
+.grid{gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.card-h{margin-bottom:10px}
+.card-h h2{font-size:11px;letter-spacing:.14em;color:var(--ink-3);font-weight:700}
+.count{background:var(--panel-2);color:var(--ink-2)}
+.hint{color:var(--ink-3)}
+
+/* Boutons et champs */
+.btn{background:var(--panel-2);border-color:var(--line);color:var(--ink);border-radius:6px}
+.btn:hover{background:#223040}
+.btn.ghost{background:none;border-color:transparent;color:var(--ink-2)}
+.btn.ghost:hover{background:var(--panel-2);color:var(--ink)}
+.btn.primary{background:var(--club);border-color:var(--club);color:var(--club-ink)}
+.btn.primary:hover{filter:brightness(1.1);background:var(--club)}
+.pill{background:var(--panel-2);border-color:var(--line);color:var(--ink-2)}
+.pill.engine{background:var(--green-l);border-color:transparent;color:var(--green-d)}
+.pill.engine.bad{background:var(--amber-l);color:var(--amber);border-color:transparent}
+.pill.upd{background:var(--club);border-color:var(--club);color:var(--club-ink)}
+select,input[type=text],input[type=password],input:not([type]),textarea{background:#0f161e;border-color:var(--line);color:var(--ink);border-radius:6px}
+select option{background:#151c25}
+:focus-visible{outline-color:var(--club-ink)}
+.switch span{background:#2c3a4b}
+.banner{background:var(--amber-l);border-color:transparent;color:var(--amber)}
+
+/* Statut du direct : une ligne */
+#live-card{padding:12px 16px}
+.live-state{background:var(--panel-2);color:var(--ink-3)}
+.live-state.on{background:var(--green-l);color:var(--green-d)}
+.live-txt b{font-size:15px}
+.live-opts{margin-top:10px}
+#live-privacy{display:none}
+.live-thumb{border:1px solid var(--line)}
+
+/* Consignes */
+.chips button{background:var(--panel-2);border-color:var(--line);color:var(--ink-2);border-radius:5px}
+.chips button:hover{color:var(--ink)}
+.tips{gap:8px}
+.tip{background:#121922;border:1px solid var(--line);border-left:4px solid #5b6b7d;border-radius:6px;padding:12px 14px;gap:5px}
+.tip.p-important{border-left-color:var(--club)}
+.tip.p-urgent{border-left-color:#ff5b4d;background:linear-gradient(90deg,rgba(255,91,77,.09),transparent 55%) #121922}
+.tip.p-idee{border-left-color:#4a5868}
+.prio{background:#263344;color:var(--ink);border-radius:4px;font-size:10.5px}
+.p-urgent .prio{background:#ff5b4d;color:#fff}
+.p-important .prio{background:var(--club);color:var(--club-ink)}
+.p-idee .prio{background:#263344;color:var(--ink-2)}
+.dom{color:var(--ink-2);text-transform:uppercase;letter-spacing:.08em;font-size:10.5px}
+.tip h3{font-size:15.5px;font-weight:700}
+.tip .do{font-size:14px;color:var(--ink)}
+.tip .do b{color:var(--ink-3);font-weight:600}
+.tip .why{color:var(--ink-3);font-size:12.5px}
+.where{background:var(--panel-2);color:var(--ink-2);border-radius:4px}
+.tip.done{border-left-color:var(--green)}
+.tips .empty{padding:38px 16px}
+
+/* Dossier */
+.dossier details{background:#121922;border-color:var(--line);border-radius:6px}
+.dossier summary{color:var(--ink)}
+.dossier dt{color:var(--ink-3)}.dossier dd{color:var(--ink)}
+
+/* Captures, rapport, discussion */
+.thumb{border-color:var(--line);border-radius:6px}
+.thumb .cap{background:#121922;color:var(--ink-2)}
+.thumb .tag{background:var(--club);color:var(--club-ink)}
+.thumbs:empty::before{background:#121922;border-color:var(--line)}
+.watch-toast{background:var(--green-l);border-color:transparent}
+.msg.user{background:var(--club);color:var(--club-ink)}
+.msg.assistant{background:var(--panel-2)}
+.progress,.bar{background:var(--panel-2)}
+.rep-sec{border-left-color:var(--line)}
+.rep-sec.good{background:linear-gradient(90deg,var(--green-l),transparent 45%)}
+.rep-sec.warn{background:linear-gradient(90deg,var(--amber-l),transparent 45%)}
+.rep-sec.info{background:linear-gradient(90deg,var(--blue-l),transparent 45%)}
+code{background:var(--panel-2)}
+.err{background:var(--red-l);border-color:transparent;color:#ffb3ab}
+.err.quota{background:var(--amber-l);color:var(--amber)}
+
+/* Panneaux latéraux, assistant d'installation, notifications */
+.drawer{background:rgba(3,7,12,.6)}
+.drawer-in{background:#10161e;border-left:1px solid var(--line);box-shadow:none}
+.drawer h3{color:var(--ink-3)}
+.panel{background:var(--card);border-color:var(--line);border-radius:var(--r)}
+.seg{background:var(--panel-2)}.seg button[aria-pressed=true]{background:#2a3748;color:var(--ink)}
+.club-swatches input[type=color]{background:var(--panel-2);border-color:var(--line)}
+.toast{background:#1d2733;border:1px solid var(--line)}
+.lightbox{background:rgba(3,7,12,.94)}
+.wizard{background:rgba(3,7,12,.7)}
+.wizard-in{background:#10161e;border:1px solid var(--line);border-radius:10px;box-shadow:none}
+.wiz-steps li i{background:var(--panel-2)}
