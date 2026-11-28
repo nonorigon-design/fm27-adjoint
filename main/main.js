@@ -22,8 +22,9 @@ const { ChangeDetector } = require('./diff');
 const { setupLocalEngine } = require('./engine-setup');
 const { LiveCoach } = require('./live');
 const { buildLivePrompt, LANGUAGES } = require('./prompts');
+const { READER_SCHEMA, buildReaderPrompt, parseReading } = require('./reader');
 
-const DEFAULTS = { provider: 'ollama', geminiModel: '', ollamaModel: '', shortcut: 'Control+Alt+A', career: 'Ma carrière', bounds: null, section: 'direct', setupDone: false, liveCloud: false, clubs: {}, language: 'fr' };
+const DEFAULTS = { provider: 'ollama', geminiModel: '', ollamaModel: '', shortcut: 'Control+Alt+A', career: 'Ma carrière', bounds: null, section: 'direct', setupDone: false, liveCloud: false, clubs: {}, language: 'fr', autoLive: true };
 const ALLOWED_HOSTS = new Set(['ollama.com', 'aistudio.google.com', 'ai.google.dev', 'github.com', 'console.cloud.google.com']);
 
 // Données isolées pour les tests automatisés (jamais utilisé en usage normal).
@@ -157,8 +158,20 @@ async function liveAnalyze(payload, previous) {
   if (provider === 'gemini' && !settings.liveCloud) throw new AiError('forbidden', 'Le direct avec Gemini n’est pas activé : il enverrait chaque nouvel écran à Google. Active-le dans les réglages, ou utilise le moteur local.');
   const model = provider === 'ollama' ? settings.ollamaModel : settings.geminiModel;
   if (!model) throw new AiError('model_missing', 'Aucun modèle choisi : ouvre les réglages IA.');
-  const prompt = buildLivePrompt({ context: store.context(sanitizeCareer(settings.career), 4000), previous, language: settings.language });
-  return analyze({ provider, key: geminiKey, model, mode: 'direct', prompt, images: [payload.jpeg.toString('base64')], maxTokens: 320 });
+  let career = sanitizeCareer(settings.career);
+  // Lecteur automatique : lit l'écran, met à jour le dossier du club et produit des conseils précis.
+  const prompt = buildReaderPrompt({ context: store.readerContext(career), language: settings.language });
+  const text = await analyze({ provider, key: geminiKey, model, mode: 'direct', prompt, images: [payload.jpeg.toString('base64')], maxTokens: 1100, format: READER_SCHEMA });
+  const reading = parseReading(text);
+  if (!reading) throw new AiError('empty', 'L’adjoint n’a pas réussi à structurer sa lecture de cet écran. Il réessaiera au prochain écran.');
+  // Pas encore de club choisi : on prend celui que FM affiche, pour que chaque club ait sa propre mémoire.
+  if (career === 'Ma carrière' && reading.club && reading.ecran !== 'Pas Football Manager') {
+    career = sanitizeCareer(reading.club); settings = { ...settings, career }; saveSettings();
+    send('live:update', { type: 'club', name: career });
+  }
+  const added = reading.ecran === 'Pas Football Manager' ? [] : store.addReading(career, reading);
+  send('live:update', { type: 'board' });
+  return { reading, added };
 }
 
 function makeSelfTestImage() {
@@ -178,7 +191,7 @@ function registerIpc() {
     for (const k of ['geminiModel', 'ollamaModel']) if (typeof patch[k] === 'string' && /^[A-Za-z0-9_.:\-\/]{0,80}$/.test(patch[k])) next[k] = patch[k];
     if (typeof patch.career === 'string') next.career = sanitizeCareer(patch.career);
     if (typeof patch.section === 'string' && MODES[patch.section]) next.section = patch.section;
-    for (const k of ['setupDone', 'liveCloud']) if (typeof patch[k] === 'boolean') next[k] = patch[k];
+    for (const k of ['setupDone', 'liveCloud', 'autoLive']) if (typeof patch[k] === 'boolean') next[k] = patch[k];
     // Couleurs par club : { "Nom de carrière": { primary: "#rrggbb", secondary: "#rrggbb", auto: true } }
     if (patch.clubs && typeof patch.clubs === 'object') {
       const hex = (v) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null);
@@ -288,6 +301,8 @@ function registerIpc() {
   handle('history:reports', (c) => store.reports(sanitizeCareer(c)));
   handle('history:messages', (c) => store.messages(sanitizeCareer(c)));
   handle('history:changes', (c) => store.changes(sanitizeCareer(c)));
+  handle('board:get', (c) => store.board(sanitizeCareer(c)));
+  handle('board:set', ({ career, id, status }) => store.setConseil(sanitizeCareer(career), String(id), String(status)));
   handle('history:addChange', (c, ch) => { if (!String(ch?.description || '').trim()) throw new Error('Décris le changement testé.'); return store.addChange(sanitizeCareer(c), ch); });
   handle('history:updateChange', (c, id, patch) => store.updateChange(sanitizeCareer(c), String(id), patch || {}));
 
@@ -365,7 +380,7 @@ async function runSmoke() {
     if (process.env.FM27_SMOKE_SHOTS) { // captures d'écran supplémentaires (revue visuelle de l'interface)
       const dir = process.env.FM27_SMOKE_SHOTS; const snap = async (n) => fs.writeFileSync(path.join(dir, n), (await win.webContents.capturePage()).toPNG());
       await snap('wizard.png');
-      await win.webContents.executeJavaScript(`__fm27.closeWizard(); const th='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="203"><rect width="360" height="203" fill="#16324f"/><text x="20" y="110" fill="#fff" font-size="22">Écran FM (exemple)</text></svg>'); __fm27.feedAdd({id:1,state:'done',at:Date.now()-40000,thumb:th,answer:'Page « Effectif » lue.\\n- Deux milieux axiaux ont le même profil : à vérifier avec la page des rôles.\\n- Illisible : la colonne « Forme ».'}); __fm27.feedAdd({id:2,state:'quiet',at:Date.now()-20000,thumb:th}); __fm27.feedAdd({id:3,state:'analyzing',at:Date.now(),thumb:th});`);
+      await win.webContents.executeJavaScript(`__fm27.closeWizard();`);
       await new Promise((r) => setTimeout(r, 400)); await snap('direct.png');
       await win.webContents.executeJavaScript(`document.querySelectorAll('#nav button')[1].click()`);
       await win.webContents.executeJavaScript(`document.getElementById('report').replaceChildren(Markdown.render(document, ${JSON.stringify('## Faits lus\n- **Formation** : 4-2-3-1 (Capture A)\n- **Milieu axial gauche** : rôle lu à l\u2019écran\n\n## Incertain ou illisible\n- Les consignes sans ballon ne sont pas visibles.\n\n## Diagnostic et hypothèses\nHypothèse : le milieu manque de soutien (à vérifier sur plusieurs matchs).\n\n## Corrections\n1. **Problème observé** : peu de couverture dans le couloir.\n2. **Éléments** : voir Capture A.\n3. **Changement conseillé** : demander à l\u2019ailier de rester plus bas.\n\n## Écrans à fournir ensuite\n- Page des consignes avec ballon.')}))`);

@@ -104,7 +104,7 @@ async function readStream(res, onToken) {
   return { message: { content, thinking } };
 }
 
-async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens, onToken }) {
+async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens, onToken, format }) {
   if (!/^[A-Za-z0-9_.:\-\/]+$/.test(model || '')) throw new AiError('model_missing', 'Choisis un modèle local.');
   const thinking = isThinkingModel(model);
   const stream = typeof onToken === 'function';
@@ -113,14 +113,16 @@ async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxToke
     keep_alive: '15m', // garde le modèle chargé entre deux analyses : pas de rechargement de plusieurs secondes à chaque fois
     options: { num_ctx: thinking ? 16384 : 8192, temperature: 0.3, num_predict: maxTokens || 900 },
     messages: [{ role: 'user', content: (thinking ? '/no_think\n' : '') + prompt, images }],
+    ...(format ? { format } : {}),
   };
   const send = async (b) => { const r = await ollamaFetch('/api/chat', { signal, fetchImpl, body: b }); return stream ? readStream(r, onToken) : r.json(); };
   // think:false — sinon les modèles « réflexion » dépensent tout leur budget en raisonnement caché.
   let data;
   try { data = await send({ ...body, think: false }); }
   catch (e) {
-    if (!(e.kind === 'server' && /HTTP 400|think/i.test(e.message))) throw e; // ancienne version d'Ollama ou modèle sans option « think »
-    data = await send(body);
+    if (!(e.kind === 'server' && /HTTP 400|think|format/i.test(e.message))) throw e; // ancienne version d'Ollama ou modèle sans option « think »
+    // Ancien Ollama : pas de schéma JSON ni de think → on garde seulement le mode JSON simple.
+    data = await send(format && typeof format === 'object' ? { ...body, format: 'json' } : body);
   }
   let text = String(data?.message?.content || '').trim();
   if (!text && thinking) {
@@ -133,10 +135,10 @@ async function ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxToke
   return text;
 }
 
-async function analyze({ provider, key, model, mode, question, context, history, images, signal, fetchImpl, prompt: custom, maxTokens, language, onToken }) {
+async function analyze({ provider, key, model, mode, question, context, history, images, signal, fetchImpl, prompt: custom, maxTokens, language, onToken, format }) {
   const prompt = custom || buildPrompt({ mode, question, context, history, imageCount: images.length, language });
   try {
-    if (provider === 'ollama') return await ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens, onToken });
+    if (provider === 'ollama') return await ollamaAnalyze({ model, prompt, images, signal, fetchImpl, maxTokens, onToken, format });
     if (!normalizeKey(key)) throw new AiError('invalid_key', 'Aucune clé Gemini enregistrée : ouvre les réglages IA.');
     return await geminiAnalyze({ key, model, prompt, images, signal, fetchImpl, maxTokens });
   } catch (e) {

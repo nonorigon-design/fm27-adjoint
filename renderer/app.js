@@ -14,7 +14,7 @@
   ];
   const menuOf = (section) => MENU.find((m) => m.items.some(([id]) => id === section));
   const TITLES = {
-    direct: ['Ton adjoint, en direct.', 'Il observe Football Manager et te conseille au fil des écrans, sans que tu ajoutes de captures.'],
+    direct: ['Tes consignes du jour.', 'L’adjoint lit chaque écran de Football Manager tout seul et te dit quoi faire. Tu n’as qu’à lire.'],
     tactique: ['Trouve ton équilibre.', 'Formation, rôles et consignes avec et sans ballon, lus sur tes captures.'],
     joueurs: ['Le bon joueur, le bon rôle.', 'Compare les attributs utiles au poste, pas seulement les étoiles.'],
     avantmatch: ['Prépare le prochain rendez-vous.', 'Effectif, adversaire et ajustements à partir de ce qui est visible.'],
@@ -71,7 +71,7 @@
     $('question').value = state.drafts[id] ?? ''; $('question').placeholder = state.info.modes[id].placeholder;
     $('ask-title').textContent = id === 'discussion' ? '2 · Discuter' : (id === 'direct' ? 'Poser une question maintenant' : '2 · Poser la question');
     $('grid').dataset.section = id;
-    renderNav(); renderThread(); if (id !== 'direct') showReportFor(id); updatePrivacy();
+    renderNav(); renderThread(); if (id !== 'direct') showReportFor(id); updatePrivacy(); if (state.board) renderSectionBoard();
   }
   async function renderThread() {
     const box = $('thread');
@@ -150,7 +150,7 @@
     }) : () => {};
     try {
       const r = await call(A.analyze({ mode: state.section, question, imageIds: state.images.map((i) => i.id), career: careerName() }));
-      if (state.section === 'direct') { feedAdd({ id: 'q' + Date.now(), state: 'done', answer: r.answer, question, at: Date.now(), q: true }); $('question').value = ''; state.drafts.direct = ''; }
+      if (state.section === 'direct') { $('question').value = ''; state.drafts.direct = ''; }
       else showReport(r);
       if (state.section === 'discussion') { $('question').value = ''; state.drafts.discussion = ''; renderThread(); }
     } catch (e) { if (e.kind !== 'cancelled') showError(e); else toast('Analyse annulée.'); }
@@ -438,9 +438,14 @@
     renderThumbs(); renderEngine(); emptyReport();
     state.section = state.settings.section && state.info.modes[state.settings.section] ? state.settings.section : 'direct';
     selectSection(state.section);
-    refreshWindows(); renderLive();
+    refreshWindows(); renderLive(); loadBoard();
     onUpdate(await call(A.update.state()));
-    maybeOfferSetup();
+    await maybeOfferSetup();
+    // Le joueur n'a qu'à lire : l'adjoint s'ouvre sur ses consignes et commence à lire FM tout seul.
+    if (state.settings.autoLive !== false && state.settings.ollamaModel && !state.live.on) {
+      selectSection('direct');
+      try { state.live.on = await call(A.live.set(true)); renderLive(); } catch { /* le bouton Démarrer reste disponible */ }
+    }
     // Restaure et valide la clé mémorisée au lancement (simple lecture de la liste des modèles, aucune donnée de jeu).
     if (state.settings.provider === 'gemini') {
       const ks = await call(A.key.status());
@@ -449,62 +454,114 @@
   }
 
 
-  // ---------- coach en direct ----------
-  const fmtTime = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  function feedAdd(item) {
-    const i = state.live.items.findIndex((x) => x.id === item.id);
-    if (i >= 0) state.live.items[i] = { ...state.live.items[i], ...item }; else state.live.items.unshift(item);
-    state.live.items = state.live.items.slice(0, 30);
-    renderFeed();
+  // ---------- bureau de l'adjoint : lecture automatique + consignes ----------
+  const fmtTime = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? 'à l’instant' : m < 60 ? `il y a ${m} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : new Date(iso).toLocaleDateString('fr-FR'); };
+  const PRIO = { urgent: ['Urgent', 0], important: ['Important', 1], idee: ['Idée', 2] };
+  // Domaines de conseils affichés dans chaque menu.
+  const SECTION_DOMAINES = { joueurs: ['Effectif', 'Moral'], tactique: ['Tactique'], avantmatch: ['Match', 'Tactique'], debrief: ['Match'], recrutement: ['Recrutement', 'Finances'], entrainement: ['Entraînement'] };
+  state.board = { conseils: [], dossier: {} }; state.boardFilter = 'tout'; state.boardHistory = false; state.freshIds = new Set();
+
+  async function loadBoard() {
+    try { state.board = await call(A.board.get(careerName())); } catch { state.board = { conseils: [], dossier: {} }; }
+    renderBoard(); renderSectionBoard(); renderDossier();
   }
-  function renderFeed() {
+  const sortTips = (list) => list.slice().sort((a, b) => PRIO[a.priorite][1] - PRIO[b.priorite][1] || b.at.localeCompare(a.at));
+  async function decide(c, status) {
+    try { await call(A.board.set({ career: careerName(), id: c.id, status })); c.status = status; renderBoard(); renderSectionBoard(); toast(status === 'fait' ? 'Noté : consigne appliquée.' : status === 'refuse' ? 'Noté : il ne te la proposera plus.' : 'Consigne remise dans la liste.'); }
+    catch (e) { toast(e.message, true); }
+  }
+  function tipCard(c) {
+    const cls = `tip p-${c.priorite}${c.status === 'fait' ? ' done' : c.status === 'refuse' ? ' refused' : ''}${state.freshIds.has(c.id) ? ' fresh' : ''}`;
+    const actions = c.status === 'nouveau'
+      ? [el('button', { class: 'btn small primary', text: 'Fait', onclick: () => decide(c, 'fait') }), el('button', { class: 'btn small ghost', text: 'Pas d’accord', onclick: () => decide(c, 'refuse') })]
+      : [el('span', { class: 'hint', text: c.status === 'fait' ? 'Appliquée' : 'Refusée' }), el('button', { class: 'btn small ghost', text: 'Remettre', onclick: () => decide(c, 'nouveau') })];
+    return el('article', { class: cls },
+      el('div', { class: 'tip-h' }, el('span', { class: 'prio', text: PRIO[c.priorite][0] }), el('span', { class: 'dom', text: c.domaine }),
+        el('span', { class: 'when', text: `${ago(c.at)} · lu sur ${c.ecran}${c.vu > 1 ? ' · revu ' + c.vu + ' fois' : ''}` })),
+      el('h3', { text: c.titre }),
+      el('p', { class: 'do' }, el('b', { text: 'À faire : ' }), c.action),
+      c.pourquoi ? el('p', { class: 'why', text: 'Pourquoi : ' + c.pourquoi }) : null,
+      el('div', { class: 'tip-f' }, c.ou ? el('span', { class: 'where', text: 'Où : ' + c.ou }) : null, el('span', { class: 'sp' }), ...actions));
+  }
+  function renderBoard() {
+    const all = state.board.conseils || [];
+    const open = all.filter((c) => c.status === 'nouveau');
+    const closed = all.filter((c) => c.status === 'fait' || c.status === 'refuse');
+    const domains = [...new Set(open.map((c) => c.domaine))];
+    const f = state.boardFilter;
+    const chip = (id, label, n) => el('button', { role: 'tab', 'aria-selected': String(f === id), onclick: () => { state.boardFilter = id; renderBoard(); } }, label, n != null ? el('i', { text: String(n) }) : null);
+    $('board-filters').replaceChildren(chip('tout', 'Tout', open.length), chip('urgent', 'Urgent', open.filter((c) => c.priorite === 'urgent').length), ...domains.map((d) => chip(d, d, open.filter((c) => c.domaine === d).length)));
+    $('board-count').textContent = open.length ? `${open.length} à faire` : '';
+    const list = sortTips((state.boardHistory ? closed : open).filter((c) => f === 'tout' || (f === 'urgent' ? c.priorite === 'urgent' : c.domaine === f)));
     const box = $('feed');
-    if (!state.live.items.length) {
-      box.replaceChildren(el('div', { class: 'empty' }, el('b', { text: 'En attente d’un écran' }), state.live.on ? 'Le coach observe Football Manager. Change d’écran dans le jeu : un conseil apparaîtra ici.' : 'Clique sur « Démarrer le coach en direct », puis joue normalement.'));
-      return;
-    }
-    box.replaceChildren(...state.live.items.map((it, idx) => {
-      const body = it.state === 'analyzing' ? el('div', { class: 'txt', text: 'Le coach lit cet écran…' })
-        : it.state === 'quiet' ? el('div', { class: 'txt', text: 'Rien de particulier à signaler sur cet écran.' })
-        : it.state === 'error' ? el('div', { class: 'txt' }, el('b', { text: (KIND_TITLES[it.error.kind] || 'Erreur') + ' — ' }), it.error.message)
-        : el('div', { class: 'txt', text: it.answer });
-      return el('div', { class: `fitem ${it.state}${it.q ? ' q' : ''}${idx === 0 && it.state === 'done' ? ' fresh' : ''}` },
-        it.thumb ? el('img', { src: it.thumb, alt: '' }) : el('div'),
-        el('div', {}, el('div', { class: 'meta', text: fmtTime(it.at) + (it.q ? ' · ta question : ' + (it.question || '').slice(0, 80) : '') }), body));
-    }));
+    if (!list.length) {
+      box.replaceChildren(el('div', { class: 'empty' }, el('b', { text: state.boardHistory ? 'Aucune consigne appliquée ou refusée' : 'Pas encore de consigne' }),
+        state.boardHistory ? '' : state.live.on ? 'L’adjoint regarde Football Manager. Joue normalement et passe par tes écrans (effectif, tactique, match) : il lit tout seul et ses consignes s’affichent ici.' : 'Démarre l’adjoint, puis joue normalement : il lit chaque écran de FM tout seul et écrit ici ce que tu dois faire.'));
+    } else box.replaceChildren(...list.map(tipCard));
+    const hb = $('board-history'); hb.hidden = !closed.length && !state.boardHistory;
+    hb.textContent = state.boardHistory ? '← Revenir aux consignes à faire' : `Voir les consignes appliquées ou refusées (${closed.length})`;
   }
+  function renderSectionBoard() {
+    const doms = SECTION_DOMAINES[state.section];
+    const card = $('sboard-card');
+    if (!doms) { card.hidden = true; return; }
+    const list = sortTips((state.board.conseils || []).filter((c) => c.status === 'nouveau' && doms.includes(c.domaine))).slice(0, 3);
+    card.hidden = !list.length;
+    $('sboard-title').textContent = `Consignes de l’adjoint · ${doms.join(' et ')}`;
+    $('sboard').replaceChildren(...list.map(tipCard));
+  }
+  function renderDossier() {
+    const entries = Object.entries(state.board.dossier || {}).sort((a, b) => b[1].at.localeCompare(a[1].at));
+    const box = $('dossier');
+    if (!entries.length) { box.replaceChildren(el('p', { class: 'hint', text: 'Rien de lu pour l’instant. Chaque écran de FM que tu ouvres vient compléter ce dossier : effectif, tactique, match, finances…' })); return; }
+    box.replaceChildren(...entries.map(([ecran, v], i) => el('details', { open: i === 0 },
+      el('summary', {}, ecran + (v.titre && v.titre !== ecran ? ' · ' + v.titre : ''), el('span', { text: ago(v.at) })),
+      el('dl', {}, ...v.faits.flatMap((x) => [el('dt', { text: x.sujet }), el('dd', { text: x.valeur })])))));
+  }
+
   function renderLive() {
     const on = state.live.on;
-    $('live-toggle').textContent = on ? 'Arrêter le coach en direct' : 'Démarrer le coach en direct';
+    $('live-toggle').textContent = on ? 'Mettre en pause' : 'Démarrer';
     $('live-toggle').classList.toggle('on', on);
-    const st = $('live-state'); st.textContent = on ? 'En direct' : 'Arrêté'; st.classList.toggle('on', on);
+    const st = $('live-state'); st.textContent = on ? 'En direct' : 'En pause'; st.classList.toggle('on', on);
+    $('live-title').textContent = on ? 'L’adjoint regarde Football Manager' : 'L’adjoint est en pause';
+    if (!state.live.sub) $('live-sub').textContent = on ? 'Ouvre un écran de FM : il le lit tout seul.' : 'Démarre-le pour qu’il lise tes écrans de FM et écrive tes consignes.';
     const opts = $('live-opts'); opts.replaceChildren();
-    if (state.settings.provider === 'gemini') {
-      const cb = el('input', { type: 'checkbox', id: 'live-cloud' }); cb.checked = !!state.settings.liveCloud;
-      cb.onchange = async () => { state.settings = await call(A.settings.set({ liveCloud: cb.checked })); renderLive(); };
-      opts.append(el('label', { class: 'switch' }, cb, el('span'), 'J’autorise l’envoi de chaque nouvel écran à Google (Gemini)'));
-    }
-    $('live-privacy').textContent = state.settings.provider === 'gemini'
-      ? (state.settings.liveCloud ? 'Chaque nouvel écran est envoyé à Google ; le quota gratuit peut être atteint vite. Le coach s’arrête seul si le quota est dépassé.' : 'Avec Gemini, le direct reste bloqué tant que tu ne l’as pas autorisé ci-dessus. Le moteur local évite tout envoi.')
-      : 'Moteur local : rien ne quitte ton ordinateur. Un nouvel écran est analysé au plus toutes les ~12 secondes.';
-    renderFeed();
+    const auto = el('input', { type: 'checkbox' }); auto.checked = state.settings.autoLive !== false;
+    auto.onchange = async () => { state.settings = await call(A.settings.set({ autoLive: auto.checked })); };
+    opts.append(el('label', { class: 'switch' }, auto, el('span'), ' Démarrer tout seul à l’ouverture de l’adjoint'));
+    $('live-privacy').textContent = 'IA locale : rien ne quitte ton ordinateur. Un nouvel écran est lu au plus toutes les 15 secondes environ.';
+    renderBoard();
   }
   async function toggleLive() {
     try {
       const wantOn = !state.live.on;
-      if (wantOn) { // vérifie qu'un moteur est prêt avant de démarrer
-        const model = state.settings.provider === 'ollama' ? state.settings.ollamaModel : state.settings.geminiModel;
-        if (!model) { toast('Aucune IA prête : choisis ou télécharge un modèle de vision dans les réglages.', true); return state.settings.provider === 'ollama' ? openWizard() : openSettings(); }
-      }
+      if (wantOn && !state.settings.ollamaModel) { toast('Aucune IA prête : choisis ou télécharge un modèle de vision dans les réglages.', true); return openWizard(); }
       state.live.on = await call(A.live.set(wantOn)); renderLive();
     } catch (e) { toast(e.message, true); }
+  }
+  function setLiveSub(text, thumb) {
+    state.live.sub = text; $('live-sub').textContent = text;
+    if (thumb) { $('live-thumb').src = thumb; $('live-thumb').hidden = false; }
   }
   function onLive(ev) {
     if (ev.type === 'state') {
       state.live.on = ev.on; renderLive();
-      if (!ev.on && ev.reason) toast(ev.reason === 'quota' ? 'Coach arrêté : quota Gemini atteint.' : ev.reason === 'errors' ? 'Coach arrêté après plusieurs erreurs : vérifie le moteur IA.' : 'Coach arrêté : ' + ev.reason, true);
-    } else if (ev.type === 'item') { if (ev.state === 'analyzing' && ev.thumb) learnClubFrom(ev.thumb); feedAdd(ev); }
-    else if (ev.type === 'notice') { if (ev.message !== state.lastNotice) { state.lastNotice = ev.message; toast(ev.message, true); } }
+      if (!ev.on && ev.reason) toast(ev.reason === 'errors' ? 'Adjoint mis en pause après plusieurs erreurs : vérifie le moteur IA dans les réglages.' : 'Adjoint mis en pause : ' + ev.reason, true);
+    } else if (ev.type === 'item') {
+      if (ev.state === 'analyzing') { if (ev.thumb) learnClubFrom(ev.thumb); setLiveSub(`Lecture d’un nouvel écran (${fmtTime(ev.at)})…`, ev.thumb); }
+      else if (ev.state === 'error') setLiveSub(`${KIND_TITLES[ev.error.kind] || 'Erreur'} : ${ev.error.message}`);
+      else {
+        const r = ev.reading; const n = (ev.added || []).length;
+        setLiveSub(r ? (r.ecran === 'Pas Football Manager' ? `Ce n’est pas un écran de FM (${fmtTime(ev.at)}).` : `Dernier écran lu : ${r.titre_ecran || r.ecran} à ${fmtTime(ev.at)} · ${n ? n + ' nouvelle' + (n > 1 ? 's' : '') + ' consigne' + (n > 1 ? 's' : '') : 'rien de nouveau'}`) : `Écran lu à ${fmtTime(ev.at)}`, ev.thumb);
+        for (const c of ev.added || []) state.freshIds.add(c.id);
+        if (n && document.hidden !== false) { /* fenêtre en arrière-plan : le toast suffit */ }
+        if (n) toast(n === 1 ? 'Nouvelle consigne : ' + ev.added[0].titre : `${n} nouvelles consignes de l’adjoint`);
+      }
+    } else if (ev.type === 'board') loadBoard();
+    else if (ev.type === 'club') { $('career').value = ev.name; state.settings.career = ev.name; applyClub(); loadBoard(); toast('Club détecté dans FM : ' + ev.name); }
+    else if (ev.type === 'notice') { if (ev.message !== state.lastNotice) { state.lastNotice = ev.message; setLiveSub(ev.message); } }
   }
 
   // ---------- installation automatique de l'IA gratuite ----------
@@ -585,7 +642,7 @@
     openWizard(true);
   }
 
-  if (new URLSearchParams(location.search).has('smoke')) window.__fm27 = { feedAdd, openWizard, closeWizard: () => { $('wizard').hidden = true; } };
+  if (new URLSearchParams(location.search).has('smoke')) window.__fm27 = { onLive, openWizard, closeWizard: () => { $('wizard').hidden = true; } };
 
   // ---------- événements ----------
   $('cap-fm').onclick = () => addCapture(A.capture.fm());
@@ -596,7 +653,8 @@
   $('cap-clear').onclick = async () => { await A.capture.clear(); state.images = []; renderThumbs(); };
   $('analyze').onclick = analyze;
   $('live-toggle').onclick = toggleLive;
-  $('feed-clear').onclick = () => { state.live.items = []; renderFeed(); };
+  $('board-history').onclick = () => { state.boardHistory = !state.boardHistory; renderBoard(); };
+  $('sboard-all').onclick = () => selectSection('direct');
   A.live.onUpdate(onLive);
   $('cancel').onclick = () => A.cancelAnalyze();
   $('question').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) analyze(); });
@@ -608,7 +666,7 @@
   $('drawer').addEventListener('click', (e) => { if (e.target === $('drawer')) closeDrawer(); });
   $('lightbox').onclick = () => { $('lightbox').hidden = true; };
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('lightbox').hidden = true; if (!$('drawer').hidden) closeDrawer(); } });
-  $('career').addEventListener('change', async () => { state.settings = await call(A.settings.set({ career: careerName() })); state.lastReport = null; applyClub(); renderThread(); showReportFor(state.section); if (state.drawer === 'club') openClub(); });
+  $('career').addEventListener('change', async () => { state.settings = await call(A.settings.set({ career: careerName() })); state.lastReport = null; applyClub(); renderThread(); showReportFor(state.section); loadBoard(); if (state.drawer === 'club') openClub(); });
   $('crest').onclick = () => openClub();
   $('btn-messages').onclick = () => selectSection('discussion');
   $('copy').onclick = async () => { if (!state.lastReport) return; await navigator.clipboard.writeText(state.lastReport.answer); toast('Rapport copié.'); };

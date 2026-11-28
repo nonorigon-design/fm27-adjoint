@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { sanitizeCareer } = require('./util');
+const { similar } = require('./reader');
 
 /** Stockage JSON atomique, une carrière = un fichier. Pas de dépendance native. */
 class Store {
@@ -66,6 +67,49 @@ class Store {
     return c;
   }
   changes(career) { return this._read(career).changes; }
+  /**
+   * Lecture automatique d'un écran : met à jour le dossier (dernier état lu par type d'écran)
+   * et ajoute les nouveaux conseils, sans doublon. Renvoie les conseils réellement ajoutés.
+   */
+  addReading(career, reading) {
+    const d = this._read(career);
+    d.dossier = d.dossier || {}; d.conseils = d.conseils || [];
+    const at = new Date().toISOString();
+    if (reading.faits.length) d.dossier[reading.ecran] = { titre: reading.titre_ecran, faits: reading.faits, at };
+    const added = [];
+    for (const c of reading.conseils) {
+      const same = d.conseils.find((x) => similar(x, c));
+      if (same) { if (same.status === 'nouveau') { same.vu = (same.vu || 1) + 1; same.at = at; if (c.priorite === 'urgent') same.priorite = 'urgent'; } continue; }
+      const entry = { id: crypto.randomUUID(), at, ecran: reading.ecran, status: 'nouveau', vu: 1, ...c };
+      d.conseils.unshift(entry); added.push(entry);
+    }
+    // Garde les conseils récents ; les « appliqués » et « refusés » restent un moment pour ne pas être redonnés.
+    d.conseils = d.conseils.slice(0, 80);
+    this._write(career, d);
+    return added;
+  }
+  board(career) { const d = this._read(career); return { conseils: d.conseils || [], dossier: d.dossier || {} }; }
+  setConseil(career, id, status) {
+    if (!['nouveau', 'fait', 'refuse', 'archive'].includes(status)) return null;
+    const d = this._read(career);
+    const c = (d.conseils || []).find((x) => x.id === id);
+    if (!c) return null;
+    c.status = status; c.decidedAt = new Date().toISOString();
+    this._write(career, d);
+    return c;
+  }
+  /** Ce que l'adjoint sait déjà : faits lus sur les autres écrans + conseils déjà donnés, appliqués ou refusés. */
+  readerContext(career, maxChars = 3500) {
+    const d = this._read(career);
+    const parts = [];
+    const dossier = Object.entries(d.dossier || {}).sort((a, b) => b[1].at.localeCompare(a[1].at)).slice(0, 6);
+    for (const [ecran, v] of dossier) parts.push(`- ${ecran} (${v.at.slice(0, 16).replace('T', ' ')}) : ` + v.faits.slice(0, 10).map((f) => `${f.sujet} = ${f.valeur}`).join(' ; '));
+    const list = (st) => (d.conseils || []).filter((c) => c.status === st).slice(0, 12).map((c) => c.titre).join(' | ');
+    if (list('nouveau')) parts.push('Conseils déjà affichés (ne pas répéter) : ' + list('nouveau'));
+    if (list('fait')) parts.push('Conseils déjà appliqués par le joueur : ' + list('fait'));
+    if (list('refuse')) parts.push('Conseils refusés par le joueur (ne plus les proposer) : ' + list('refuse'));
+    return parts.join('\n').slice(0, maxChars);
+  }
   /** Contexte envoyé au moteur : derniers rapports, derniers messages, changements testés. Borné. */
   context(career, maxChars = 12000) {
     const d = this._read(career);

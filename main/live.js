@@ -32,9 +32,17 @@ class LiveCoach {
     const id = ++this.seq;
     this.emit({ type: 'item', id, state: 'analyzing', thumb: payload.thumb, at: this.now() });
     Promise.resolve(this.analyzeFn(payload, this.previous.slice(-this.keep)))
-      .then((text) => {
+      .then((result) => {
         this.errors = 0;
-        const answer = String(text || '').trim();
+        // Lecteur automatique : l'analyse renvoie un objet { reading, added } au lieu d'un texte.
+        if (result && typeof result === 'object') {
+          const added = result.added || [];
+          for (const c of added) this.previous.push(c.titre);
+          this.previous = this.previous.slice(-this.keep);
+          this.emit({ type: 'item', id, state: added.length ? 'done' : 'quiet', reading: result.reading || null, added, thumb: payload.thumb, at: this.now() });
+          return;
+        }
+        const answer = String(result || '').trim();
         if (!answer || /^RAS\b/i.test(answer)) { this.emit({ type: 'item', id, state: 'quiet', thumb: payload.thumb, at: this.now() }); return; }
         this.previous.push(answer);
         this.previous = this.previous.slice(-this.keep);

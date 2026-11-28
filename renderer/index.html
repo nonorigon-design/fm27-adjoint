@@ -42,11 +42,19 @@
 
     <div class="grid" id="grid">
       <section class="card live" id="live-card">
-        <div class="card-h"><h2>Coach en direct</h2><span class="live-state" id="live-state">Arrêté</span></div>
-        <p class="live-lead">L’adjoint regarde ton écran Football Manager <b>tout seul</b> : à chaque nouvel écran, il te donne un conseil court. Tu n’as aucune capture à ajouter.</p>
-        <button class="btn primary big live-btn" id="live-toggle">Démarrer le coach en direct</button>
+        <div class="live-bar">
+          <span class="live-state" id="live-state">Arrêté</span>
+          <img id="live-thumb" class="live-thumb" alt="Dernier écran lu" hidden>
+          <div class="live-txt"><b id="live-title">L’adjoint regarde Football Manager</b><span id="live-sub"></span></div>
+          <button class="btn primary live-btn" id="live-toggle">Démarrer</button>
+        </div>
         <div id="live-opts" class="live-opts"></div>
         <p class="hint" id="live-privacy"></p>
+      </section>
+
+      <section class="card" id="sboard-card" hidden>
+        <div class="card-h"><h2 id="sboard-title">Consignes de l’adjoint</h2><button class="btn small ghost" id="sboard-all">Tout voir</button></div>
+        <div id="sboard" class="tips"></div>
       </section>
 
       <section class="card" id="capture-card">
@@ -93,9 +101,16 @@
         <div class="progress" id="analyze-progress" hidden><span></span><em id="progress-text">Analyse en cours…</em></div>
       </section>
 
-      <section class="card report" id="feed-card">
-        <div class="card-h"><h2>Conseils en direct</h2><button class="btn small ghost" id="feed-clear">Effacer</button></div>
-        <div id="feed" class="feed"></div>
+      <section class="card" id="feed-card">
+        <div class="card-h"><h2>Tes consignes</h2><span class="count" id="board-count"></span></div>
+        <div class="chips" id="board-filters" role="tablist" aria-label="Filtrer les consignes"></div>
+        <div id="feed" class="tips"></div>
+        <button class="btn small ghost" id="board-history"></button>
+      </section>
+
+      <section class="card" id="dossier-card">
+        <div class="card-h"><h2>Ce que l’adjoint a lu</h2></div>
+        <div id="dossier" class="dossier"></div>
       </section>
 
       <section class="card report" id="report-card">

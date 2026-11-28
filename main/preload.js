@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('adjoint', {
   hardware: invoke('hardware:detect'),
   engine: { setup: invoke('engine:setup'), cancel: invoke('engine:cancel'), onStep: listen('engine:step') },
   live: { set: invoke('live:set'), onUpdate: listen('live:update') },
+  board: { get: invoke('board:get'), set: invoke('board:set') },
   capture: {
     windows: invoke('capture:windows'), screens: invoke('capture:screens'),
     window: invoke('capture:window'), screen: invoke('capture:screen'), fm: invoke('capture:fm'),
